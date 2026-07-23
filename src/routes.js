@@ -3,13 +3,34 @@ import path from 'node:path';
 import express from 'express';
 import { config } from './config.js';
 import * as db from './db.js';
-import { getUsers } from './twitch.js';
-import { vapidPublicKey } from './push.js';
+import { getUsers, getStreams } from './twitch.js';
+import { vapidPublicKey, sendToSubscription } from './push.js';
 import { handleLiveStream } from './poller.js';
 
 const publicDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
 
 export const router = express.Router();
+
+const PAGE_CSP = [
+  "default-src 'self'",
+  "img-src 'self' https://static-cdn.jtvnw.net",
+  "style-src 'self' 'unsafe-inline'",
+  "script-src 'self'",
+  "connect-src 'self'",
+  "frame-ancestors 'none'",
+  "base-uri 'none'",
+].join('; ');
+
+function pageHeaders(res) {
+  res.set('Content-Security-Policy', PAGE_CSP);
+  res.set('X-Frame-Options', 'DENY');
+  res.set('Referrer-Policy', 'no-referrer');
+}
+
+router.use((req, res, next) => {
+  res.set('X-Content-Type-Options', 'nosniff');
+  next();
+});
 
 router.use('/api', (req, res, next) => {
   const origin = req.headers.origin;
@@ -87,7 +108,27 @@ router.post('/api/subscribe', async (req, res) => {
     origin: req.headers.origin ?? null,
   });
   res.status(201).json({ ok: true });
+  sendWelcomeIfLive(row, { endpoint, p256dh, auth }).catch((err) =>
+    console.warn('[push] welcome check failed:', err.message ?? err));
 });
+
+// New subscribers get an immediate notification if the channel is already
+// live, so they can see it works. Claim the stream id afterwards so the
+// poller doesn't send them the same stream again.
+async function sendWelcomeIfLive(channelRow, sub) {
+  const [stream] = await getStreams([channelRow.login]);
+  if (!stream) return;
+  await sendToSubscription(sub, {
+    title: `Notifications are on — ${channelRow.display_name} is live right now!`,
+    body: stream.title
+      ? stream.game_name ? `${stream.title} — ${stream.game_name}` : stream.title
+      : 'Streaming now on Twitch',
+    icon: channelRow.profile_image_url || undefined,
+    url: `https://twitch.tv/${channelRow.login}`,
+    tag: `twn-${channelRow.login}-${stream.id}`,
+  });
+  db.claimStream(channelRow.login, String(stream.id));
+}
 
 router.post('/api/unsubscribe', (req, res) => {
   const { channel, endpoint } = req.body ?? {};
@@ -123,7 +164,13 @@ router.get('/sw.js', (req, res) => {
 });
 
 router.get('/subscribe', (req, res) => {
+  pageHeaders(res);
   res.sendFile(path.join(publicDir, 'subscribe.html'));
+});
+
+router.get('/faq', (req, res) => {
+  pageHeaders(res);
+  res.sendFile(path.join(publicDir, 'faq.html'));
 });
 
 router.get('/healthz', (req, res) => {
@@ -131,7 +178,8 @@ router.get('/healthz', (req, res) => {
 });
 
 router.use(express.static(publicDir, {
-  setHeaders(res) {
+  setHeaders(res, filePath) {
     res.set('Cache-Control', 'public, max-age=300');
+    if (filePath.endsWith('.html')) pageHeaders(res);
   },
 }));

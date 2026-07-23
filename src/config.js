@@ -16,10 +16,14 @@ function csvSet(name, { lowercase = false } = {}) {
   );
 }
 
+const publicBaseUrl = process.env.PUBLIC_BASE_URL
+  ?? (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : null);
+if (!publicBaseUrl) required('PUBLIC_BASE_URL');
+
 export const config = {
   twitchClientId: required('TWITCH_CLIENT_ID'),
   twitchClientSecret: required('TWITCH_CLIENT_SECRET'),
-  publicBaseUrl: required('PUBLIC_BASE_URL').replace(/\/+$/, ''),
+  publicBaseUrl: publicBaseUrl.replace(/\/+$/, ''),
   port: Number(process.env.PORT ?? 8080),
   dbPath: process.env.DB_PATH ?? 'data/notify.db',
   pollIntervalSeconds: Math.max(10, Number(process.env.POLL_INTERVAL_SECONDS ?? 60)),

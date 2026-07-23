@@ -65,7 +65,10 @@ const stmt = {
   subscriptionsForChannel: db.prepare('SELECT * FROM subscriptions WHERE channel = ?'),
   deleteEndpointEverywhere: db.prepare('DELETE FROM subscriptions WHERE endpoint = ?'),
   distinctSubscribedChannels: db.prepare('SELECT DISTINCT channel FROM subscriptions'),
-  markNotified: db.prepare("UPDATE channels SET last_stream_id = ?, last_notified_at = unixepoch(), is_live = 1 WHERE login = ?"),
+  claimStream: db.prepare(`
+    UPDATE channels SET last_stream_id = @streamId, last_notified_at = unixepoch(), is_live = 1
+    WHERE login = @login AND (last_stream_id IS NULL OR last_stream_id <> @streamId)
+  `),
   setLive: db.prepare('UPDATE channels SET is_live = ? WHERE login = ?'),
 };
 
@@ -79,5 +82,5 @@ export const countChannelsForEndpoint = (endpoint) => stmt.countChannelsForEndpo
 export const subscriptionsForChannel = (channel) => stmt.subscriptionsForChannel.all(channel);
 export const deleteEndpointEverywhere = (endpoint) => stmt.deleteEndpointEverywhere.run(endpoint);
 export const distinctSubscribedChannels = () => stmt.distinctSubscribedChannels.all().map((r) => r.channel);
-export const markNotified = (login, streamId) => stmt.markNotified.run(streamId, login);
+export const claimStream = (login, streamId) => stmt.claimStream.run({ login, streamId }).changes === 1;
 export const setLive = (login, live) => stmt.setLive.run(live ? 1 : 0, login);

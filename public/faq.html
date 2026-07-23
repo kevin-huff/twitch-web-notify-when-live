@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FAQ — notify-when-live</title>
+<meta name="description" content="Common issues with the notify-when-live button and how to fix them.">
+<style>
+  :root {
+    --bg: #0e0c12;
+    --surface: #161219;
+    --surface-2: #1d1824;
+    --border: #2a2333;
+    --text: #f2eef7;
+    --muted: #9b93ab;
+    --accent: #9146ff;
+    --accent-hover: #a970ff;
+    --live: #eb0400;
+    --mono: ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  a { color: var(--accent-hover); }
+  a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent-hover); outline-offset: 2px; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 0 20px; }
+
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 0;
+  }
+  .wordmark { font: 600 14px/1 var(--mono); color: var(--text); text-decoration: none; letter-spacing: -0.02em; }
+  .wordmark span { color: var(--accent-hover); }
+  .back { font-size: 13.5px; text-decoration: none; }
+
+  .hero { padding: 36px 0 26px; }
+  h1 { font-size: clamp(26px, 4.5vw, 36px); font-weight: 800; letter-spacing: -0.03em; margin: 0 0 10px; }
+  .hero p { color: var(--muted); margin: 0; max-width: 58ch; }
+
+  .group-label {
+    font: 600 11px/1 var(--mono);
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--muted);
+    margin: 30px 0 12px;
+  }
+  details {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    margin-bottom: 10px;
+  }
+  details[open] { border-color: #3a3050; }
+  summary {
+    cursor: pointer;
+    list-style: none;
+    padding: 15px 18px;
+    font-weight: 600;
+    font-size: 14.5px;
+    letter-spacing: -0.01em;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  summary::-webkit-details-marker { display: none; }
+  summary::after {
+    content: "+";
+    font: 400 18px/1 var(--mono);
+    color: var(--muted);
+    flex: none;
+  }
+  details[open] summary::after { content: "–"; }
+  .a { padding: 0 18px 16px; color: var(--muted); font-size: 14px; }
+  .a p { margin: 0 0 10px; }
+  .a p:last-child { margin-bottom: 0; }
+  .a strong { color: var(--text); font-weight: 600; }
+  .a code {
+    font: 12.5px var(--mono);
+    color: #cfc4e6;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 1px 6px;
+  }
+  .a ol, .a ul { margin: 0 0 10px; padding-left: 20px; }
+  .a li { margin-bottom: 4px; }
+
+  footer {
+    margin-top: 40px;
+    border-top: 1px solid var(--border);
+    padding: 26px 0 40px;
+    display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+    color: var(--muted); font-size: 13.5px;
+  }
+  footer .love { color: var(--text); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a class="wordmark" href="/">notify-when-<span>live</span></a>
+    <a class="back" href="/">← Back to the button builder</a>
+  </header>
+
+  <section class="hero">
+    <h1>Questions &amp; fixes</h1>
+    <p>Everything that can realistically go wrong with your button, and what to do about it.
+    Most of the time, nothing goes wrong — paste the snippet and you're done.</p>
+  </section>
+
+  <div class="group-label">The button on your site</div>
+
+  <details>
+    <summary>The button doesn't show up at all</summary>
+    <div class="a">
+      <p>Almost always one of these:</p>
+      <ol>
+        <li><strong>Your site builder stripped the script.</strong> Some builders (and most free plans) remove
+        <code>&lt;script&gt;</code> tags. Look for an "embed code" or "custom HTML" block and paste the snippet there.</li>
+        <li><strong>Your site is built with React/Vue/etc.</strong> and the snippet was pasted into a component or
+        set with <code>innerHTML</code> — scripts added that way never run. Put the snippet in your HTML template
+        (e.g. <code>index.html</code>) instead.</li>
+        <li><strong>Your site has a Content-Security-Policy.</strong> See the CSP question below.</li>
+        <li><strong>The channel name in the snippet is misspelled</strong> — the button removes itself if the
+        channel doesn't exist. Rebuild the snippet on the <a href="/">builder page</a>; it checks the name for you.</li>
+      </ol>
+      <p>Tip: open your browser's console (F12) — the widget logs a warning explaining what happened.</p>
+    </div>
+  </details>
+
+  <details>
+    <summary>The button shows "Notifications unsupported"</summary>
+    <div class="a">
+      <p>That visitor's browser can't do push notifications. Common causes:</p>
+      <ul>
+        <li><strong>Your site isn't HTTPS.</strong> Push requires it. Most hosts give you HTTPS for free — turn it on.</li>
+        <li><strong>They opened your site inside an app</strong> (Instagram, TikTok, Discord's built-in browser).
+        In-app browsers don't support push. In a normal browser it'll work.</li>
+        <li><strong>A very old browser.</strong> Nothing to fix on your side.</li>
+      </ul>
+    </div>
+  </details>
+
+  <details>
+    <summary>The button looks unstyled or clashes with my site</summary>
+    <div class="a">
+      <p>Your site's own CSS can restyle the button (that's also what lets you theme it). Use the
+      <a href="/">builder</a> to set colors, text, and corner radius — those settings win over page styles.
+      If your site has an aggressive CSS reset targeting all buttons, give the snippet's surrounding element
+      its own styles, or adjust via the CSS variables <code>--twn-bg</code>, <code>--twn-color</code>,
+      <code>--twn-radius</code>, <code>--twn-bg-subscribed</code>.</p>
+    </div>
+  </details>
+
+  <details>
+    <summary>My site has a Content-Security-Policy</summary>
+    <div class="a">
+      <p>Add this service to it (replace with your notify server's address if you self-host):</p>
+      <p><code>script-src https://your-notify-host; connect-src https://your-notify-host</code></p>
+      <p><code>script-src</code> is required — without it the button can't load at all.
+      If you can only add <code>script-src</code>, that's fine: the button automatically switches to a
+      small subscribe window hosted on the notify server instead.</p>
+    </div>
+  </details>
+
+  <details>
+    <summary>Why does a popup open when fans click the button?</summary>
+    <div class="a">
+      <p>That's the normal fallback, and it works fine — fans subscribe in the popup and it closes itself.</p>
+      <p>If you'd rather have fans subscribe right on your page (and have notifications come from
+      <strong>your</strong> domain instead of the notify server's), download <a href="/sw.js" download="sw.js"><code>sw.js</code></a>
+      and upload it to your site's root folder, so it's reachable at <code>yoursite.com/sw.js</code>.
+      The button detects it automatically.</p>
+      <p>Note: if your site is already a PWA with its own service worker, the popup flow is used on purpose
+      so we never interfere with your existing one.</p>
+    </div>
+  </details>
+
+  <div class="group-label">Your fans' notifications</div>
+
+  <details>
+    <summary>A fan subscribed but didn't get a notification when I went live</summary>
+    <div class="a">
+      <p>Check these, roughly in order of likelihood:</p>
+      <ol>
+        <li><strong>Give it a minute.</strong> Going live is detected by checking Twitch about once a minute.</li>
+        <li><strong>Their OS is muting notifications</strong> — Windows Focus Assist / Do Not Disturb,
+        or notifications disabled for their browser in system settings. The push arrived; it just wasn't shown.</li>
+        <li><strong>Their browser wasn't running.</strong> On desktop, the browser (or its background service)
+        has to be running to receive pushes. On Android they arrive regardless; on iPhone see the iPhone question.</li>
+        <li><strong>An ad blocker</strong> — some aggressive filter lists block push scripts entirely.</li>
+        <li><strong>They cleared their browsing data</strong>, which silently removes push subscriptions.
+        Dead subscriptions are cleaned up automatically; they just need to click the button again.</li>
+      </ol>
+    </div>
+  </details>
+
+  <details>
+    <summary>A fan clicked "Block" on the permission prompt by accident</summary>
+    <div class="a">
+      <p>The browser remembers that choice and won't ask again — the button shows "Notifications blocked".
+      They can undo it themselves: click the icon left of the address bar on your site →
+      <strong>Notifications</strong> → <strong>Allow</strong>, then click the button again.</p>
+    </div>
+  </details>
+
+  <details>
+    <summary>Fans on iPhone can't subscribe</summary>
+    <div class="a">
+      <p>Apple only allows web push for sites that have been added to the Home Screen. A fan on iPhone/iPad
+      needs to: open your site in Safari → Share → <strong>Add to Home Screen</strong> → open it from there →
+      then the button works. The subscribe window shows them this hint automatically. That's an Apple platform
+      rule; no website can work around it.</p>
+    </div>
+  </details>
+
+  <details>
+    <summary>Someone subscribed while I was live and instantly got a notification</summary>
+    <div class="a">
+      <p>That's intentional. If you're live at the moment someone subscribes, they immediately get their first
+      notification — so they know it works, and they can join the stream that made them want notifications
+      in the first place. They won't get a duplicate for that same stream later.</p>
+    </div>
+  </details>
+
+  <details>
+    <summary>How do fans unsubscribe?</summary>
+    <div class="a">
+      <p>Click the button again — it flips back to "Notify me when live". They can also revoke the
+      notification permission in their browser's site settings, which kills the subscription on the next
+      send (it's cleaned up automatically).</p>
+    </div>
+  </details>
+
+  <div class="group-label">About the service</div>
+
+  <details>
+    <summary>How fast do notifications go out after I go live?</summary>
+    <div class="a">
+      <p>Within about a minute — Twitch is checked once a minute for every channel that has at least one
+      subscriber. The notification includes your stream title, category, and a preview thumbnail, and
+      clicking it opens your Twitch channel.</p>
+    </div>
+  </details>
+
+  <details>
+    <summary>Can I use it on multiple pages, or for multiple channels?</summary>
+    <div class="a">
+      <p>Both. Paste the same snippet on as many pages as you like — a fan's subscription covers your whole
+      site. And you can put several buttons with different <code>data-channel</code> values on one page
+      (for a team or community site); fans subscribe to each channel separately.</p>
+    </div>
+  </details>
+
+  <details>
+    <summary>What's the catch? What do you collect?</summary>
+    <div class="a">
+      <p>No catch. No accounts, no ads, no analytics, no tracking pixels. The only thing stored is the
+      push subscription a fan's own browser creates — that's the technical address notifications get sent to —
+      plus which channel they want. Nothing is ever sold or shared, and unsubscribing deletes it.
+      The whole thing is <a href="https://github.com/kevin-huff/twitch-web-notify-when-live">open source</a>,
+      so you can check — or run your own copy.</p>
+    </div>
+  </details>
+
+  <footer>
+    <span>Free forever — no accounts, no ads, no tracking. <span class="love">Made with 💜 for streamers.</span></span>
+    <a href="https://github.com/kevin-huff/twitch-web-notify-when-live">Self-host it on GitHub</a>
+  </footer>
+</div>
+</body>
+</html>

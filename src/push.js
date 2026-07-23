@@ -49,6 +49,24 @@ export async function sendToChannel(login, payloadObj) {
   return { sent, pruned };
 }
 
+export async function sendToSubscription(sub, payloadObj) {
+  try {
+    await webpush.sendNotification(
+      { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+      JSON.stringify(payloadObj),
+      { TTL: 3600 },
+    );
+    return 'sent';
+  } catch (err) {
+    if (err?.statusCode === 404 || err?.statusCode === 410) {
+      deleteEndpointEverywhere(sub.endpoint);
+      return 'pruned';
+    }
+    console.warn(`[push] single send failed: ${err?.statusCode ?? err}`);
+    return 'failed';
+  }
+}
+
 export async function notifyChannelLive(channelRow, stream) {
   const payload = {
     title: `${channelRow.display_name} is live!`,

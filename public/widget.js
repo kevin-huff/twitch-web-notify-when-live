@@ -13,28 +13,39 @@
   const lsKey = 'twn:sub:' + channel;
 
   const LABELS = {
-    default: 'Notify me when live',
+    default: script.dataset.label || 'Notify me when live',
     working: 'Working…',
-    subscribed: "✓ You'll be notified",
+    subscribed: script.dataset.labelSubscribed || "✓ You'll be notified",
     blocked: 'Notifications blocked',
     unsupported: 'Notifications unsupported',
   };
 
   const BELL = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5S10.5 3.17 10.5 4v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>';
 
+  // localStorage throws in sandboxed iframes (some site builders embed custom
+  // code that way) — degrade to no persistence instead of crashing.
+  const storage = {
+    get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+    del(k) { try { localStorage.removeItem(k); } catch {} },
+  };
+
+  // Rules are inserted via CSSOM, which the page's style-src CSP does not
+  // restrict — an inline <style> body would be blocked on strict-CSP sites.
   if (!document.getElementById('twn-style')) {
     const style = document.createElement('style');
     style.id = 'twn-style';
-    style.textContent = [
-      '.twn-btn{display:inline-flex;align-items:center;gap:.5em;padding:.6em 1.1em;border:0;cursor:pointer;',
-      'background:var(--twn-bg,#9146ff);color:var(--twn-color,#fff);border-radius:var(--twn-radius,8px);',
-      'font:var(--twn-font,600 14px/1.2 system-ui,sans-serif);transition:filter .15s,background .15s}',
+    document.head.appendChild(style);
+    const rules = [
+      '.twn-btn{display:inline-flex;align-items:center;gap:.5em;padding:.6em 1.1em;border:0;cursor:pointer;background:var(--twn-bg,#9146ff);color:var(--twn-color,#fff);border-radius:var(--twn-radius,8px);font:var(--twn-font,600 14px/1.2 system-ui,sans-serif);transition:filter .15s,background .15s}',
       '.twn-btn:hover:not(:disabled){filter:brightness(1.1)}',
       '.twn-btn:disabled{opacity:.6;cursor:not-allowed}',
       '.twn-btn[data-state="subscribed"]{background:var(--twn-bg-subscribed,#00a86b)}',
       '.twn-btn svg{width:1.1em;height:1.1em;fill:currentColor;flex:none}',
-    ].join('');
-    document.head.appendChild(style);
+    ];
+    for (const rule of rules) {
+      try { style.sheet.insertRule(rule, style.sheet.cssRules.length); } catch {}
+    }
   }
 
   const btn = document.createElement('button');
@@ -43,6 +54,21 @@
   const label = document.createElement('span');
   btn.innerHTML = BELL;
   btn.appendChild(label);
+
+  // Per-tag customization via data- attributes (falls back to CSS custom
+  // properties inherited from the page, then to the built-in defaults).
+  const overrides = {
+    '--twn-bg': script.dataset.bg,
+    '--twn-color': script.dataset.color,
+    '--twn-bg-subscribed': script.dataset.bgSubscribed,
+    '--twn-radius': script.dataset.radius && /^\d+(\.\d+)?$/.test(script.dataset.radius)
+      ? script.dataset.radius + 'px'
+      : script.dataset.radius,
+  };
+  for (const [prop, value] of Object.entries(overrides)) {
+    if (value) btn.style.setProperty(prop, value);
+  }
+
   script.insertAdjacentElement('beforebegin', btn);
 
   function setState(state, title) {
@@ -78,7 +104,7 @@
       body: JSON.stringify({ channel, subscription: sub.toJSON() }),
     });
     if (!res.ok) throw new Error('subscribe failed: ' + res.status);
-    localStorage.setItem(lsKey, '1');
+    storage.set(lsKey, '1');
     setState('subscribed');
   }
 
@@ -93,7 +119,7 @@
       const data = await res.json();
       if (data.remainingChannelsForEndpoint === 0) await sub.unsubscribe();
     }
-    localStorage.removeItem(lsKey);
+    storage.del(lsKey);
     setState('default');
   }
 
@@ -105,6 +131,22 @@
     );
   }
 
+  // Path A needs a same-origin /sw.js that is actually OURS. Fetch and check
+  // it first: registering blindly would clobber (or subscribe through) a PWA
+  // site's own service worker, whose push handler wouldn't understand our
+  // payloads. Any failure (404, CSP connect-src, SPA HTML response) → Path B.
+  async function probeSameOriginSw() {
+    try {
+      const res = await fetch('/sw.js', { cache: 'no-cache' });
+      if (!res.ok) return null;
+      const text = await res.text();
+      if (!text.includes(serviceOrigin + '/sw-core.js')) return null;
+      return await navigator.serviceWorker.register('/sw.js');
+    } catch {
+      return null;
+    }
+  }
+
   async function boot() {
     if (!supported) {
       setState('unsupported', 'This browser does not support push notifications (or the page is not HTTPS)');
@@ -113,7 +155,7 @@
 
     setState('working');
 
-    let cfg;
+    let cfg = null;
     try {
       const res = await fetch(base + '/api/config?channel=' + encodeURIComponent(channel));
       if (!res.ok) {
@@ -123,16 +165,16 @@
       }
       cfg = await res.json();
     } catch (err) {
-      console.warn('[twitch-notify] could not reach notification server', err);
-      btn.remove();
-      return;
+      // Server unreachable from this page (likely a connect-src CSP). The
+      // popup flow runs entirely on the service origin, so it still works.
+      console.warn('[twitch-notify] cannot reach the notification server from this page, using popup flow', err);
     }
 
-    // Probe once (shared across widget tags): does this site host /sw.js?
-    // Registering never prompts the user; a rejection (404 / SPA HTML response)
-    // means we fall back to the popup on the service origin.
-    window.__twnSwProbe ??= navigator.serviceWorker.register('/sw.js').then((r) => r, () => null);
-    const reg = await window.__twnSwProbe;
+    let reg = null;
+    if (cfg) {
+      window.__twnSwProbe ??= probeSameOriginSw();
+      reg = await window.__twnSwProbe;
+    }
 
     if (Notification.permission === 'denied') {
       setState('blocked', 'Notifications are blocked in your browser settings for this site');
@@ -141,19 +183,19 @@
 
     if (reg) {
       const sub = await reg.pushManager.getSubscription();
-      if (!sub) localStorage.removeItem(lsKey);
+      if (!sub) storage.del(lsKey);
     }
-    setState(localStorage.getItem(lsKey) ? 'subscribed' : 'default');
+    setState(storage.get(lsKey) ? 'subscribed' : 'default');
 
     window.addEventListener('message', (event) => {
       if (event.origin !== serviceOrigin) return;
       const msg = event.data;
       if (!msg || msg.channel !== channel) return;
       if (msg.type === 'twn:subscribed') {
-        localStorage.setItem(lsKey, '1');
+        storage.set(lsKey, '1');
         setState('subscribed');
       } else if (msg.type === 'twn:unsubscribed') {
-        localStorage.removeItem(lsKey);
+        storage.del(lsKey);
         setState('default');
       }
     });

@@ -12,24 +12,50 @@ Visitors click a "Notify me when live" button, grant notification permission onc
 
 ## Deploy the service
 
-1. Create a Twitch application at <https://dev.twitch.tv/console/apps> (any OAuth redirect URL — it isn't used; only client credentials are).
-2. ```sh
-   cp .env.example .env   # fill in TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET, PUBLIC_BASE_URL
-   docker compose up -d
-   ```
-3. Put it behind your reverse proxy with TLS. `PUBLIC_BASE_URL` must be the public HTTPS URL (e.g. `https://notify.example.com`) — it's baked into the generated service worker and popup URLs.
+First, create a Twitch application at <https://dev.twitch.tv/console/apps> (any OAuth redirect URL — it isn't used; only client credentials are).
+
+### Railway
+
+1. New project → Deploy from GitHub repo (Railway auto-detects the Dockerfile via `railway.json`).
+2. Add a **volume** to the service, mounted at `/data` (this holds the SQLite DB and VAPID keys).
+3. Set variables: `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET`. `PUBLIC_BASE_URL` is derived automatically from Railway's public domain (`RAILWAY_PUBLIC_DOMAIN`); set it explicitly only if you use a custom domain.
+4. Settings → Networking → Generate Domain. Done — open that domain to get the button builder.
+
+### Docker (any host)
+
+```sh
+cp .env.example .env   # fill in TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET, PUBLIC_BASE_URL
+docker compose up -d
+```
+
+Put it behind your reverse proxy with TLS. `PUBLIC_BASE_URL` must be the public HTTPS URL (e.g. `https://notify.example.com`) — it's baked into the generated service worker and popup URLs.
 
 Without Docker: Node ≥ 20, `npm install`, `node --env-file=.env src/server.js`.
 
-## Embed the widget
+## Get the button
 
-Paste where the button should appear:
+Open the service's homepage — it's a button builder. Streamers pick their channel, customize text and colors with a live preview, and copy their snippet. Or hand-write it:
 
 ```html
 <script src="https://notify.example.com/widget.js" data-channel="somechannel" async></script>
 ```
 
-That's it — the button works immediately using a subscribe popup hosted on the service's domain. Multiple tags with different `data-channel` values on one page are fine. Style it with CSS custom properties on any ancestor: `--twn-bg`, `--twn-color`, `--twn-radius`, `--twn-font`, `--twn-bg-subscribed`.
+The button works immediately using a subscribe popup hosted on the service's domain. Multiple tags with different `data-channel` values on one page are fine. If a fan subscribes while the stream is already live, they get their first notification right away so they know it works.
+
+### Customization
+
+Via `data-` attributes on the script tag (what the builder generates):
+
+| Attribute | Default | |
+|---|---|---|
+| `data-label` | `Notify me when live` | Button text |
+| `data-label-subscribed` | `✓ You'll be notified` | Text after subscribing |
+| `data-bg` | `#9146ff` | Button color |
+| `data-color` | `#ffffff` | Text color |
+| `data-bg-subscribed` | `#00a86b` | Button color when subscribed |
+| `data-radius` | `8` | Corner radius (px) |
+
+The same knobs exist as CSS custom properties on any ancestor (`--twn-bg`, `--twn-color`, `--twn-radius`, `--twn-font`, `--twn-bg-subscribed`) — attributes win.
 
 ### Optional: notifications from your own domain
 
@@ -68,6 +94,17 @@ curl -X POST "$PUBLIC_BASE_URL/api/test/notify" \
 ```
 
 Local development works without TLS (localhost is a secure browser context): run the service on `:8080`, serve a test page containing the embed snippet from another port, and subscribe from there.
+
+## Will it work on my site?
+
+The widget is built to degrade gracefully. What to expect on unusual setups:
+
+- **Site has a Content-Security-Policy**: add `script-src https://your-notify-host` (required — nothing can load without it) and ideally `connect-src https://your-notify-host`. If `connect-src` is blocked, the widget automatically uses the popup flow, which runs entirely on the service origin. Button styles are applied via CSSOM, so strict `style-src` policies don't break them.
+- **Site is a PWA with its own service worker**: the widget checks that `/sw.js` is actually this service's file before registering anything — it will never replace your existing service worker. Those sites just use the popup flow.
+- **Site builders (Wix, Squarespace, …) that embed custom code in sandboxed iframes**: the widget works without `localStorage` (it degrades to not remembering the subscribed state across reloads) and uses the popup flow from inside iframes.
+- **In-app browsers** (Instagram, TikTok, Discord, …): no push support — the button shows a disabled "Notifications unsupported" state.
+- **Ad blockers**: aggressive filter lists sometimes block push-notification scripts wholesale. Nothing a service can honestly do about that.
+- **Notifications arrive but don't show**: check the OS-level notification settings for the browser (Windows Focus Assist / macOS Do Not Disturb).
 
 ## Limitations
 

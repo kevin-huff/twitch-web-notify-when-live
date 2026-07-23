@@ -5,12 +5,17 @@ import { notifyChannelLive } from './push.js';
 
 export async function handleLiveStream(channelRow, stream) {
   const streamId = String(stream.id);
-  if (channelRow.last_stream_id === streamId) {
+  // Atomic claim: the WHERE clause is the dedupe check, so it operates on the
+  // latest committed state even if channelRow was read stale.
+  const claimed = db.claimStream(channelRow.login, streamId);
+  if (!claimed) {
+    if (channelRow.last_stream_id !== streamId) {
+      console.warn(`[poller] stale read caught for ${channelRow.login}: row had ${channelRow.last_stream_id}, DB already claimed ${streamId}`);
+    }
     db.setLive(channelRow.login, true);
     return { sent: 0, pruned: 0, deduped: true };
   }
   const result = await notifyChannelLive(channelRow, stream);
-  db.markNotified(channelRow.login, streamId);
   return { ...result, deduped: false };
 }
 
