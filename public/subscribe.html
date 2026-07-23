@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Live notifications</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      margin: 0;
+      font: 15px/1.5 system-ui, sans-serif;
+      background: #f6f6f8;
+      color: #18181b;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+    @media (prefers-color-scheme: dark) {
+      body { background: #18181b; color: #efeff1; }
+      .card { background: #26262c !important; }
+    }
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 4px 24px rgba(0,0,0,.12);
+      padding: 28px 24px;
+      width: min(340px, calc(100vw - 32px));
+      text-align: center;
+    }
+    .avatar {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      display: none;
+    }
+    h1 { font-size: 18px; margin: 12px 0 4px; }
+    p { margin: 4px 0 16px; opacity: .8; }
+    button {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border: 0;
+      cursor: pointer;
+      background: #9146ff;
+      color: #fff;
+      font: 600 15px/1.2 system-ui, sans-serif;
+      padding: 12px 20px;
+      border-radius: 8px;
+    }
+    button:hover:not(:disabled) { filter: brightness(1.1); }
+    button:disabled { opacity: .6; cursor: not-allowed; }
+    button.subscribed { background: #00a86b; }
+    .hint { font-size: 13px; opacity: .7; margin-top: 14px; }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <img class="avatar" id="avatar" alt="">
+    <h1 id="title">Loading…</h1>
+    <p id="desc"></p>
+    <button id="action" class="hidden"></button>
+    <div class="hint hidden" id="hint"></div>
+  </div>
+  <script src="/subscribe.js"></script>
+</body>
+</html>

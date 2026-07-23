@@ -1,0 +1,19 @@
+{
+  "name": "twitch-web-notify-when-live",
+  "version": "0.1.0",
+  "description": "Self-hostable web push notifications for when a Twitch channel goes live, with a drop-in website widget",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --env-file=.env --watch src/server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.2.0",
+    "express": "^5.1.0",
+    "web-push": "^3.6.7"
+  }
+}

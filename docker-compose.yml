@@ -1,0 +1,14 @@
+services:
+  notify:
+    build: .
+    env_file: .env
+    environment:
+      DB_PATH: /data/notify.db
+    ports:
+      - "8080:8080"
+    volumes:
+      - data:/data
+    restart: unless-stopped
+
+volumes:
+  data:
