@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin — notify-when-live</title>
+<meta name="robots" content="noindex">
+<style>
+  :root {
+    --bg: #0e0c12;
+    --surface: #161219;
+    --border: #2a2333;
+    --text: #f2eef7;
+    --muted: #9b93ab;
+    --accent: #9146ff;
+    --accent-hover: #a970ff;
+    --live: #eb0400;
+    --ok: #00a86b;
+    --mono: ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.6 system-ui, sans-serif; }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 0 20px 50px; }
+  header { display: flex; align-items: center; justify-content: space-between; padding: 18px 0 26px; }
+  .wordmark { font: 600 14px/1 var(--mono); color: var(--text); text-decoration: none; }
+  .wordmark span { color: var(--accent-hover); }
+  h1 { font-size: 22px; font-weight: 800; letter-spacing: -0.02em; margin: 0 0 18px; }
+  input, button { font: inherit; }
+  #login { display: flex; gap: 10px; max-width: 420px; }
+  #token {
+    flex: 1; background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    color: var(--text); padding: 9px 11px;
+  }
+  #load {
+    background: var(--accent); color: #fff; border: 0; border-radius: 8px; padding: 9px 16px;
+    font-weight: 600; cursor: pointer;
+  }
+  #load:hover { background: var(--accent-hover); }
+  input:focus-visible, button:focus-visible { outline: 2px solid var(--accent-hover); outline-offset: 2px; }
+  #error { color: #ff8a80; min-height: 22px; margin-top: 10px; font-size: 13px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 22px 0; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
+  .card .k { font: 600 10.5px/1 var(--mono); text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); }
+  .card .v { font-size: 22px; font-weight: 800; margin-top: 6px; letter-spacing: -0.02em; }
+  table { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: 13.5px; }
+  th { font: 600 10.5px/1 var(--mono); text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); }
+  tr:last-child td { border-bottom: 0; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); margin-right: 7px; }
+  .dot.live { background: var(--live); }
+  .num { font-family: var(--mono); }
+  .muted { color: var(--muted); }
+  .hidden { display: none; }
+  .tablewrap { overflow-x: auto; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a class="wordmark" href="/">notify-when-<span>live</span></a>
+    <span class="muted">admin</span>
+  </header>
+
+  <h1>Instance stats</h1>
+
+  <div id="login">
+    <input type="password" id="token" placeholder="Admin token" autocomplete="off">
+    <button id="load" type="button">Load stats</button>
+  </div>
+  <div id="error"></div>
+
+  <div id="stats" class="hidden">
+    <div class="cards">
+      <div class="card"><div class="k">Channels</div><div class="v" id="t-channels"></div></div>
+      <div class="card"><div class="k">Subscriptions</div><div class="v" id="t-subs"></div></div>
+      <div class="card"><div class="k">EventSub</div><div class="v" id="t-eventsub"></div></div>
+      <div class="card"><div class="k">Poll interval</div><div class="v" id="t-poll"></div></div>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>Channel</th><th>Subscribers</th><th>Last notified</th><th>Last stream id</th></tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<script src="/admin.js" defer></script>
+</body>
+</html>

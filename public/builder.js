@@ -5,7 +5,11 @@
   const inputs = {
     channel: el('channel'), label: el('label'), labelSubscribed: el('label-subscribed'),
     bg: el('bg'), color: el('color'), bgSubscribed: el('bg-subscribed'), radius: el('radius'),
+    iconOnly: el('icon-only'),
   };
+  const tryBox = el('try');
+  const trySlot = el('try-slot');
+  let validChannel = null;
   const pvDefault = el('pv-default');
   const pvSubscribed = el('pv-subscribed');
   const code = el('code');
@@ -25,31 +29,67 @@
     return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
   }
 
-  function update() {
-    const v = {
+  function currentValues() {
+    return {
       label: inputs.label.value.trim() || DEFAULTS.label,
       labelSubscribed: inputs.labelSubscribed.value.trim() || DEFAULTS.labelSubscribed,
       bg: inputs.bg.value, color: inputs.color.value,
       bgSubscribed: inputs.bgSubscribed.value, radius: inputs.radius.value,
+      iconOnly: inputs.iconOnly.checked,
     };
+  }
+
+  function customAttrs(v) {
+    const attrs = [];
+    if (v.label !== DEFAULTS.label) attrs.push(['data-label', v.label]);
+    if (v.labelSubscribed !== DEFAULTS.labelSubscribed) attrs.push(['data-label-subscribed', v.labelSubscribed]);
+    if (v.bg !== DEFAULTS.bg) attrs.push(['data-bg', v.bg]);
+    if (v.color !== DEFAULTS.color) attrs.push(['data-color', v.color]);
+    if (v.bgSubscribed !== DEFAULTS.bgSubscribed) attrs.push(['data-bg-subscribed', v.bgSubscribed]);
+    if (v.radius !== DEFAULTS.radius) attrs.push(['data-radius', v.radius]);
+    if (v.iconOnly) attrs.push(['data-style', 'icon']);
+    return attrs;
+  }
+
+  function update() {
+    const v = currentValues();
     for (const b of [pvDefault, pvSubscribed]) {
       b.style.setProperty('--pv-bg', v.bg);
       b.style.setProperty('--pv-color', v.color);
       b.style.setProperty('--pv-bg-subscribed', v.bgSubscribed);
       b.style.setProperty('--pv-radius', v.radius + 'px');
+      b.classList.toggle('icon', v.iconOnly);
     }
-    setButton(pvDefault, v.label);
-    setButton(pvSubscribed, v.labelSubscribed);
+    setButton(pvDefault, v.iconOnly ? '' : v.label);
+    setButton(pvSubscribed, v.iconOnly ? '' : v.labelSubscribed);
 
     const channel = inputs.channel.value.trim().toLowerCase() || 'yourchannel';
-    const attrs = [`src="${location.origin}/widget.js"`, `data-channel="${attr(channel)}"`];
-    if (v.label !== DEFAULTS.label) attrs.push(`data-label="${attr(v.label)}"`);
-    if (v.labelSubscribed !== DEFAULTS.labelSubscribed) attrs.push(`data-label-subscribed="${attr(v.labelSubscribed)}"`);
-    if (v.bg !== DEFAULTS.bg) attrs.push(`data-bg="${v.bg}"`);
-    if (v.color !== DEFAULTS.color) attrs.push(`data-color="${v.color}"`);
-    if (v.bgSubscribed !== DEFAULTS.bgSubscribed) attrs.push(`data-bg-subscribed="${v.bgSubscribed}"`);
-    if (v.radius !== DEFAULTS.radius) attrs.push(`data-radius="${v.radius}"`);
-    code.textContent = `<script ${attrs.join('\n        ')} async><\/script>`;
+    const parts = [`src="${location.origin}/widget.js"`, `data-channel="${attr(channel)}"`]
+      .concat(customAttrs(v).map(([name, value]) => `${name}="${attr(value)}"`));
+    code.textContent = `<script ${parts.join('\n        ')} async><\/script>`;
+
+    scheduleTryRefresh();
+  }
+
+  // The try-it button is the real widget, loaded from /widget.js with the
+  // current customization. Recreated (debounced) whenever settings change.
+  let tryTimer;
+  function scheduleTryRefresh() {
+    clearTimeout(tryTimer);
+    tryTimer = setTimeout(renderTry, 400);
+  }
+
+  function renderTry() {
+    tryBox.classList.toggle('hidden', !validChannel);
+    trySlot.replaceChildren();
+    if (!validChannel) return;
+    const v = currentValues();
+    const s = document.createElement('script');
+    s.src = location.origin + '/widget.js';
+    s.setAttribute('data-channel', validChannel);
+    for (const [name, value] of customAttrs(v)) s.setAttribute(name, value);
+    s.async = true;
+    trySlot.appendChild(s);
   }
 
   let debounce;
@@ -57,6 +97,8 @@
     const channel = inputs.channel.value.trim().toLowerCase();
     status.className = '';
     status.textContent = '';
+    validChannel = null;
+    scheduleTryRefresh();
     if (!channel) return;
     clearTimeout(debounce);
     debounce = setTimeout(async () => {
@@ -64,6 +106,8 @@
         const res = await fetch('/api/config?channel=' + encodeURIComponent(channel));
         if (res.ok) {
           const cfg = await res.json();
+          validChannel = cfg.channel.login;
+          scheduleTryRefresh();
           status.className = 'ok';
           status.innerHTML = '';
           if (cfg.channel.profileImageUrl) {

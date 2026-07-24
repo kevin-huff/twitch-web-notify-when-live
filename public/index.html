@@ -159,7 +159,27 @@
   }
   .pv-btn.subscribed { background: var(--pv-bg-subscribed, #00a86b); box-shadow: 0 0 46px color-mix(in srgb, var(--pv-bg-subscribed, #00a86b) 42%, transparent); }
   .pv-btn svg { width: 1.1em; height: 1.1em; fill: currentColor; flex: none; }
+  .pv-btn.icon { padding: 0.6em; }
+  .pv-btn.icon span { display: none; }
   .stage-note { font-size: 12.5px; color: var(--muted); text-align: center; margin: 14px 4px 0; }
+  .field.check label { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; cursor: pointer; }
+  .field.check input { accent-color: var(--accent); width: 15px; height: 15px; }
+  .try {
+    margin-top: 18px;
+    border: 1px dashed #3a3050;
+    border-radius: 12px;
+    padding: 16px 18px;
+    text-align: center;
+  }
+  .try-head {
+    font: 600 11px/1 var(--mono);
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--accent-hover);
+    margin-bottom: 14px;
+  }
+  .try-note { font-size: 12.5px; color: var(--muted); margin: 12px 0 0; }
+  .hidden { display: none; }
 
   .snippet { grid-column: 1 / -1; border-top: 1px solid var(--border); padding: 22px 26px 26px; }
   .snippet-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
@@ -258,6 +278,9 @@
         <label for="radius">Corner radius</label>
         <input type="range" id="radius" min="0" max="24" value="8">
       </div>
+      <div class="field check">
+        <label><input type="checkbox" id="icon-only"> Icon only (just the bell — fits navbars)</label>
+      </div>
     </div>
 
     <div class="stagewrap">
@@ -280,6 +303,12 @@
       </div>
       <p class="stage-note">Fans who subscribe while you're live get their first notification
       right away, so they know it works. Something not working? <a href="/faq">Check the FAQ</a>.</p>
+      <div class="try hidden" id="try">
+        <div class="try-head">Try it — this button is real</div>
+        <div id="try-slot"></div>
+        <p class="try-note">Click it to subscribe to your own channel, exactly like a fan would.
+        If you're live right now, you'll get a notification within seconds.</p>
+      </div>
     </div>
 
     <div class="snippet">

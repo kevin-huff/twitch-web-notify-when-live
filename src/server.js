@@ -2,10 +2,16 @@ import express from 'express';
 import { config } from './config.js';
 import { router } from './routes.js';
 import { startPoller } from './poller.js';
+import { reconcile } from './eventsub.js';
 
 const app = express();
 app.disable('x-powered-by');
-app.use(express.json());
+app.set('trust proxy', 1);
+app.use(express.json({
+  verify(req, res, buf) {
+    req.rawBody = buf;
+  },
+}));
 app.use(router);
 
 app.use((err, req, res, next) => {
@@ -17,4 +23,5 @@ app.use((err, req, res, next) => {
 app.listen(config.port, () => {
   console.log(`[server] listening on :${config.port} (public: ${config.publicBaseUrl})`);
   startPoller();
+  reconcile();
 });

@@ -8,6 +8,7 @@
     title: document.getElementById('title'),
     desc: document.getElementById('desc'),
     action: document.getElementById('action'),
+    test: document.getElementById('test'),
     hint: document.getElementById('hint'),
   };
 
@@ -40,6 +41,7 @@
     el.desc.textContent = subscribed
       ? `You'll get a notification when ${displayName} goes live.`
       : `Get a browser notification when ${displayName} goes live on Twitch.`;
+    el.test.classList.toggle('hidden', !subscribed);
   }
 
   async function main() {
@@ -73,6 +75,28 @@
       hint('Notifications are blocked for this site. Allow them in your browser settings, then reload.');
       return;
     }
+
+    el.test.addEventListener('click', async () => {
+      el.test.disabled = true;
+      el.test.textContent = 'Sending…';
+      try {
+        const sub = await reg.pushManager.getSubscription();
+        if (!sub) throw new Error('no subscription');
+        const r = await fetch('/api/test-notification', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ channel, endpoint: sub.endpoint }),
+        });
+        const data = await r.json();
+        el.test.textContent = data.ok ? 'Sent — check your notifications' : 'Could not send. Try again in a moment.';
+      } catch {
+        el.test.textContent = 'Could not send. Try again in a moment.';
+      }
+      setTimeout(() => {
+        el.test.disabled = false;
+        el.test.textContent = 'Send a test notification';
+      }, 5000);
+    });
 
     el.action.addEventListener('click', async () => {
       el.action.disabled = true;

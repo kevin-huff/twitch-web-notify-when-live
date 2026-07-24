@@ -42,15 +42,18 @@
       '.twn-btn:disabled{opacity:.6;cursor:not-allowed}',
       '.twn-btn[data-state="subscribed"]{background:var(--twn-bg-subscribed,#00a86b)}',
       '.twn-btn svg{width:1.1em;height:1.1em;fill:currentColor;flex:none}',
+      '.twn-btn.twn-icon{padding:.6em}',
+      '.twn-btn.twn-icon span{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}',
     ];
     for (const rule of rules) {
       try { style.sheet.insertRule(rule, style.sheet.cssRules.length); } catch {}
     }
   }
 
+  const iconOnly = script.dataset.style === 'icon';
   const btn = document.createElement('button');
   btn.type = 'button';
-  btn.className = 'twn-btn';
+  btn.className = iconOnly ? 'twn-btn twn-icon' : 'twn-btn';
   const label = document.createElement('span');
   btn.innerHTML = BELL;
   btn.appendChild(label);
@@ -75,7 +78,8 @@
     btn.dataset.state = state;
     label.textContent = LABELS[state];
     btn.disabled = state === 'working' || state === 'blocked' || state === 'unsupported';
-    btn.title = title || '';
+    btn.title = title || (iconOnly ? LABELS[state] : '');
+    if (iconOnly) btn.setAttribute('aria-label', LABELS[state]);
   }
 
   function urlBase64ToUint8Array(base64String) {

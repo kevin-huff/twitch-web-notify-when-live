@@ -61,6 +61,13 @@ const stmt = {
       origin = excluded.origin
   `),
   removeSubscription: db.prepare('DELETE FROM subscriptions WHERE channel = ? AND endpoint = ?'),
+  getSubscription: db.prepare('SELECT * FROM subscriptions WHERE channel = ? AND endpoint = ?'),
+  countSubscriptionsForChannel: db.prepare('SELECT COUNT(*) AS n FROM subscriptions WHERE channel = ?'),
+  countAllSubscriptions: db.prepare('SELECT COUNT(*) AS n FROM subscriptions'),
+  channelsWithCounts: db.prepare(`
+    SELECT c.*, (SELECT COUNT(*) FROM subscriptions s WHERE s.channel = c.login) AS subscribers
+    FROM channels c ORDER BY subscribers DESC, c.login
+  `),
   countChannelsForEndpoint: db.prepare('SELECT COUNT(*) AS n FROM subscriptions WHERE endpoint = ?'),
   subscriptionsForChannel: db.prepare('SELECT * FROM subscriptions WHERE channel = ?'),
   deleteEndpointEverywhere: db.prepare('DELETE FROM subscriptions WHERE endpoint = ?'),
@@ -78,6 +85,10 @@ export const getChannel = (login) => stmt.getChannel.get(login);
 export const upsertChannel = (channel) => stmt.upsertChannel.run(channel);
 export const addSubscription = (sub) => stmt.addSubscription.run(sub);
 export const removeSubscription = (channel, endpoint) => stmt.removeSubscription.run(channel, endpoint);
+export const getSubscription = (channel, endpoint) => stmt.getSubscription.get(channel, endpoint);
+export const countSubscriptionsForChannel = (channel) => stmt.countSubscriptionsForChannel.get(channel).n;
+export const countAllSubscriptions = () => stmt.countAllSubscriptions.get().n;
+export const channelsWithCounts = () => stmt.channelsWithCounts.all();
 export const countChannelsForEndpoint = (endpoint) => stmt.countChannelsForEndpoint.get(endpoint).n;
 export const subscriptionsForChannel = (channel) => stmt.subscriptionsForChannel.all(channel);
 export const deleteEndpointEverywhere = (endpoint) => stmt.deleteEndpointEverywhere.run(endpoint);

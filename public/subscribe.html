@@ -52,6 +52,18 @@
     button:disabled { opacity: .6; cursor: not-allowed; }
     button.subscribed { background: #00a86b; }
     .hint { font-size: 13px; opacity: .7; margin-top: 14px; }
+    .linkish {
+      background: none;
+      border: 0;
+      color: #a970ff;
+      font: inherit;
+      font-size: 13px;
+      cursor: pointer;
+      text-decoration: underline;
+      margin-top: 12px;
+      padding: 4px;
+    }
+    .linkish:disabled { opacity: .6; cursor: default; text-decoration: none; }
     .hidden { display: none !important; }
   </style>
 </head>
@@ -61,6 +73,7 @@
     <h1 id="title">Loading…</h1>
     <p id="desc"></p>
     <button id="action" class="hidden"></button>
+    <div><button id="test" class="linkish hidden" type="button">Send a test notification</button></div>
     <div class="hint hidden" id="hint"></div>
   </div>
   <script src="/subscribe.js"></script>

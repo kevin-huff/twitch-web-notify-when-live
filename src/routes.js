@@ -6,6 +6,7 @@ import * as db from './db.js';
 import { getUsers, getStreams } from './twitch.js';
 import { vapidPublicKey, sendToSubscription } from './push.js';
 import { handleLiveStream } from './poller.js';
+import { callbackHandler, ensureChannelSubscription, eventsubStatus } from './eventsub.js';
 
 const publicDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
 
@@ -31,6 +32,25 @@ router.use((req, res, next) => {
   res.set('X-Content-Type-Options', 'nosniff');
   next();
 });
+
+// Fixed-window in-memory rate limiter, one bucket map per route group.
+function rateLimiter(max, windowMs = 60_000) {
+  const hits = new Map();
+  setInterval(() => {
+    const now = Date.now();
+    for (const [key, entry] of hits) if (now - entry.start > windowMs) hits.delete(key);
+  }, windowMs).unref();
+  return (req, res, next) => {
+    const now = Date.now();
+    let entry = hits.get(req.ip);
+    if (!entry || now - entry.start > windowMs) {
+      entry = { start: now, count: 0 };
+      hits.set(req.ip, entry);
+    }
+    if (++entry.count > max) return res.status(429).json({ error: 'rate_limited' });
+    next();
+  };
+}
 
 router.use('/api', (req, res, next) => {
   const origin = req.headers.origin;
@@ -75,7 +95,7 @@ async function resolveChannel(rawLogin) {
   return { row };
 }
 
-router.get('/api/config', async (req, res) => {
+router.get('/api/config', rateLimiter(60), async (req, res) => {
   const { row, status, error } = await resolveChannel(req.query.channel);
   if (error) return res.status(status).json({ error });
   res.json({
@@ -88,7 +108,7 @@ router.get('/api/config', async (req, res) => {
   });
 });
 
-router.post('/api/subscribe', async (req, res) => {
+router.post('/api/subscribe', rateLimiter(30), async (req, res) => {
   const { channel, subscription } = req.body ?? {};
   const endpoint = subscription?.endpoint;
   const p256dh = subscription?.keys?.p256dh;
@@ -108,6 +128,9 @@ router.post('/api/subscribe', async (req, res) => {
     origin: req.headers.origin ?? null,
   });
   res.status(201).json({ ok: true });
+  if (db.countSubscriptionsForChannel(row.login) === 1) {
+    ensureChannelSubscription(row.login).catch(() => {});
+  }
   sendWelcomeIfLive(row, { endpoint, p256dh, auth }).catch((err) =>
     console.warn('[push] welcome check failed:', err.message ?? err));
 });
@@ -130,7 +153,7 @@ async function sendWelcomeIfLive(channelRow, sub) {
   db.claimStream(channelRow.login, String(stream.id));
 }
 
-router.post('/api/unsubscribe', (req, res) => {
+router.post('/api/unsubscribe', rateLimiter(30), (req, res) => {
   const { channel, endpoint } = req.body ?? {};
   const login = String(channel ?? '').trim().toLowerCase();
   if (!LOGIN_RE.test(login) || typeof endpoint !== 'string' || !endpoint) {
@@ -138,6 +161,62 @@ router.post('/api/unsubscribe', (req, res) => {
   }
   db.removeSubscription(login, endpoint);
   res.json({ ok: true, remainingChannelsForEndpoint: db.countChannelsForEndpoint(endpoint) });
+});
+
+// Fan-facing: lets a subscriber send themselves one test push. Knowing the
+// (unguessable) endpoint URL is proof of ownership; a per-endpoint cooldown
+// keeps it from becoming a spam vector.
+const testCooldown = new Map();
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, at] of testCooldown) if (now - at > 60_000) testCooldown.delete(key);
+}, 60_000).unref();
+
+router.post('/api/test-notification', rateLimiter(10), async (req, res) => {
+  const { channel, endpoint } = req.body ?? {};
+  const login = String(channel ?? '').trim().toLowerCase();
+  if (!LOGIN_RE.test(login) || typeof endpoint !== 'string' || !endpoint) {
+    return res.status(400).json({ error: 'invalid_request' });
+  }
+  const sub = db.getSubscription(login, endpoint);
+  if (!sub) return res.status(404).json({ error: 'subscription_not_found' });
+  const last = testCooldown.get(endpoint) ?? 0;
+  if (Date.now() - last < 30_000) return res.status(429).json({ error: 'rate_limited' });
+  testCooldown.set(endpoint, Date.now());
+
+  const row = db.getChannel(login);
+  const result = await sendToSubscription(sub, {
+    title: 'This is your test notification 🔔',
+    body: `Notifications for ${row.display_name} are working.`,
+    icon: row.profile_image_url || undefined,
+    url: `https://twitch.tv/${login}`,
+    tag: `twn-test-${login}`,
+  });
+  res.json({ ok: result === 'sent', result });
+});
+
+router.post('/api/eventsub/callback', callbackHandler);
+
+router.get('/api/admin/stats', (req, res) => {
+  if (!config.adminToken) return res.status(404).json({ error: 'not_found' });
+  if (req.headers.authorization !== `Bearer ${config.adminToken}`) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+  const channels = db.channelsWithCounts().map((c) => ({
+    login: c.login,
+    displayName: c.display_name,
+    isLive: Boolean(c.is_live),
+    subscribers: c.subscribers,
+    lastStreamId: c.last_stream_id,
+    lastNotifiedAt: c.last_notified_at,
+    createdAt: c.created_at,
+  }));
+  res.json({
+    totals: { channels: channels.length, subscriptions: db.countAllSubscriptions() },
+    eventsub: eventsubStatus,
+    pollIntervalSeconds: config.pollIntervalSeconds,
+    channels,
+  });
 });
 
 router.post('/api/test/notify', async (req, res) => {
@@ -171,6 +250,11 @@ router.get('/subscribe', (req, res) => {
 router.get('/faq', (req, res) => {
   pageHeaders(res);
   res.sendFile(path.join(publicDir, 'faq.html'));
+});
+
+router.get('/admin', (req, res) => {
+  pageHeaders(res);
+  res.sendFile(path.join(publicDir, 'admin.html'));
 });
 
 router.get('/healthz', (req, res) => {

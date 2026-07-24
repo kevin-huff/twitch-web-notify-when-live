@@ -19,22 +19,29 @@ async function getAppToken(force = false) {
   return token.accessToken;
 }
 
-async function helix(path, param, values, extraParams = {}) {
+async function helix(method, path, { params = {}, body } = {}) {
   const url = new URL(config.twitchApiBase + path);
-  for (const v of values) url.searchParams.append(param, v);
-  for (const [k, v] of Object.entries(extraParams)) url.searchParams.set(k, v);
-
+  for (const [key, value] of Object.entries(params)) {
+    for (const item of [].concat(value)) url.searchParams.append(key, item);
+  }
   const request = async (force) => fetch(url, {
+    method,
     headers: {
       'Client-ID': config.twitchClientId,
       Authorization: `Bearer ${await getAppToken(force)}`,
+      ...(body ? { 'Content-Type': 'application/json' } : {}),
     },
+    body: body ? JSON.stringify(body) : undefined,
   });
-
   let res = await request(false);
   if (res.status === 401) res = await request(true);
-  if (!res.ok) throw new Error(`Twitch API ${path} failed: ${res.status} ${await res.text()}`);
-  return (await res.json()).data;
+  return res;
+}
+
+async function helixJson(method, path, opts) {
+  const res = await helix(method, path, opts);
+  if (!res.ok) throw new Error(`Twitch API ${method} ${path} failed: ${res.status} ${await res.text()}`);
+  return res.json();
 }
 
 function chunks(arr, size) {
@@ -45,14 +52,40 @@ function chunks(arr, size) {
 
 export async function getUsers(logins) {
   const results = await Promise.all(
-    chunks(logins, 100).map((c) => helix('/users', 'login', c)),
+    chunks(logins, 100).map((c) => helixJson('GET', '/users', { params: { login: c } })),
   );
-  return results.flat();
+  return results.flatMap((r) => r.data);
 }
 
 export async function getStreams(logins) {
   const results = await Promise.all(
-    chunks(logins, 100).map((c) => helix('/streams', 'user_login', c, { type: 'live', first: 100 })),
+    chunks(logins, 100).map((c) =>
+      helixJson('GET', '/streams', { params: { user_login: c, type: 'live', first: 100 } })),
   );
-  return results.flat();
+  return results.flatMap((r) => r.data);
+}
+
+export async function listEventSubSubscriptions() {
+  return (await helixJson('GET', '/eventsub/subscriptions')).data;
+}
+
+export async function createEventSubSubscription(broadcasterId, callback, secret) {
+  const res = await helix('POST', '/eventsub/subscriptions', {
+    body: {
+      type: 'stream.online',
+      version: '1',
+      condition: { broadcaster_user_id: broadcasterId },
+      transport: { method: 'webhook', callback, secret },
+    },
+  });
+  if (res.status === 409) return 'exists';
+  if (!res.ok) throw new Error(`EventSub create failed: ${res.status} ${await res.text()}`);
+  return 'created';
+}
+
+export async function deleteEventSubSubscription(id) {
+  const res = await helix('DELETE', '/eventsub/subscriptions', { params: { id } });
+  if (!res.ok && res.status !== 404) {
+    throw new Error(`EventSub delete failed: ${res.status} ${await res.text()}`);
+  }
 }

@@ -6,7 +6,7 @@ Visitors click a "Notify me when live" button, grant notification permission onc
 
 ## How it works
 
-- The service polls the Twitch Helix API (default every 60 s) for the channels people have subscribed to. When a channel's stream id changes, it sends a web push ("**SomeChannel is live!** *stream title — category*", click opens the Twitch channel) to every subscriber.
+- Going live is detected two ways: **Twitch EventSub webhooks** (near-instant, enabled automatically when `PUBLIC_BASE_URL` is HTTPS) with a **Helix poll** (default every 60 s) as a permanent fallback. Duplicate delivery is impossible — both paths go through an atomic per-stream claim. On each go-live, subscribers get a web push ("**SomeChannel is live!** *stream title — category*", click opens the Twitch channel).
 - Push subscriptions are stored in SQLite. VAPID keys are auto-generated on first boot and persisted in the DB — **don't delete the DB casually; rotating VAPID keys orphans every existing subscriber**.
 - The widget is a single vanilla-JS file served by this service. No build step, no framework.
 
@@ -54,6 +54,7 @@ Via `data-` attributes on the script tag (what the builder generates):
 | `data-color` | `#ffffff` | Text color |
 | `data-bg-subscribed` | `#00a86b` | Button color when subscribed |
 | `data-radius` | `8` | Corner radius (px) |
+| `data-style` | *(unset)* | `icon` renders a bell-only compact button |
 
 The same knobs exist as CSS custom properties on any ancestor (`--twn-bg`, `--twn-color`, `--twn-radius`, `--twn-font`, `--twn-bg-subscribed`) — attributes win.
 
@@ -79,7 +80,10 @@ The widget detects it automatically and subscribes visitors right on your site.
 | `CHANNEL_ALLOWLIST` | no | *(any)* | Comma-separated logins this instance will watch. **Recommended in production** — otherwise anyone can make your instance poll arbitrary channels |
 | `ALLOWED_ORIGINS` | no | *(open CORS)* | Comma-separated origins allowed to call the API |
 | `VAPID_SUBJECT` | no | `mailto:admin@example.com` | Contact for push services |
-| `ADMIN_TOKEN` | no | *(off)* | Enables `POST /api/test/notify` |
+| `ADMIN_TOKEN` | no | *(off)* | Enables `POST /api/test/notify` and the `/admin` stats page |
+| `EVENTSUB_SECRET` | no | *(auto-generated, persisted)* | Override the EventSub webhook HMAC secret |
+
+Subscribed fans can send themselves a test push from the subscribe popup. The API endpoints are rate-limited per IP (`trust proxy` is enabled, so run behind a reverse proxy/Railway). With `ADMIN_TOKEN` set, `/admin` shows per-channel subscriber counts, live status, and EventSub state.
 
 ## Testing without going live
 
@@ -110,4 +114,4 @@ The widget is built to degrade gracefully. What to expect on unusual setups:
 
 - **iOS Safari**: Apple only allows web push for sites added to the Home Screen. The subscribe popup shows a hint; there is nothing a website can do beyond that.
 - The widget needs HTTPS (or localhost) on the embedding page — on plain HTTP it shows a disabled "unsupported" button.
-- Going-live detection is polling-based, so notifications arrive up to `POLL_INTERVAL_SECONDS` after the stream starts. Twitch EventSub support is a planned follow-up.
+- On plain-HTTP deployments (no HTTPS `PUBLIC_BASE_URL`), EventSub can't be used and detection falls back to polling only — notifications then arrive up to `POLL_INTERVAL_SECONDS` after the stream starts.
