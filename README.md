@@ -58,6 +58,12 @@ Via `data-` attributes on the script tag (what the builder generates):
 
 The same knobs exist as CSS custom properties on any ancestor (`--twn-bg`, `--twn-color`, `--twn-radius`, `--twn-font`, `--twn-bg-subscribed`) — attributes win.
 
+## The viewer page
+
+Streamers aren't the only entry point. `https://notify.example.com/my` is a viewer-facing page where any fan can search Twitch channels, build their own list of streamers to be notified about, send themselves a test push, and remove channels — no button embed involved. Everything is keyed off the browser's push subscription; there are still no accounts.
+
+With `CHANNEL_ALLOWLIST` set, the viewer page shows the allowlisted channels as a browsable directory (first 50) instead of open search, so viewers only see channels the instance will actually watch.
+
 ### Optional: notifications from your own domain
 
 By default, notifications are delivered via the service's domain (the popup flow). If you want them to come from **your** site's domain and skip the popup, download `https://notify.example.com/sw.js` and put it at your site's root (it must be reachable at `https://yoursite.com/sw.js`). It's one line:

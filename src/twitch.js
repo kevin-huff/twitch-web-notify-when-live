@@ -57,6 +57,11 @@ export async function getUsers(logins) {
   return results.flatMap((r) => r.data);
 }
 
+export async function searchChannels(query, first = 10) {
+  const data = await helixJson('GET', '/search/channels', { params: { query, first } });
+  return data.data;
+}
+
 export async function getStreams(logins) {
   const results = await Promise.all(
     chunks(logins, 100).map((c) =>

@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Your live notifications</title>
+<meta name="description" content="Pick the Twitch streamers you care about and get a browser notification the moment they go live. No account needed.">
+<style>
+  :root {
+    --bg: #0e0c12;
+    --surface: #161219;
+    --surface-2: #1d1824;
+    --border: #2a2333;
+    --text: #f2eef7;
+    --muted: #9b93ab;
+    --accent: #9146ff;
+    --accent-hover: #a970ff;
+    --live: #eb0400;
+    --ok: #00a86b;
+    --mono: ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  a { color: var(--accent-hover); }
+  .wrap { max-width: 640px; margin: 0 auto; padding: 0 20px; }
+
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 0;
+  }
+  .wordmark { font: 600 14px/1 var(--mono); color: var(--text); text-decoration: none; letter-spacing: -0.02em; }
+  .wordmark span { color: var(--accent-hover); }
+  .pill {
+    font: 500 12px/1 var(--mono);
+    color: var(--accent-hover);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 7px 12px;
+  }
+
+  .hero { padding: 34px 0 28px; }
+  h1 {
+    font-size: clamp(26px, 5vw, 36px);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1.14;
+    margin: 0 0 12px;
+  }
+  .badge-live {
+    display: inline-block;
+    background: var(--live);
+    color: #fff;
+    font-size: 0.52em;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    padding: 0.32em 0.55em;
+    border-radius: 6px;
+    vertical-align: 0.28em;
+    margin: 0 0.1em;
+  }
+  .hero p { color: var(--muted); margin: 0; max-width: 56ch; }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 24px;
+  }
+  .panel + .panel { margin-top: 18px; }
+  .panel h2 {
+    font: 600 11px/1 var(--mono);
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--muted);
+    margin: 0 0 16px;
+  }
+
+  .banner {
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    border-radius: 12px;
+    padding: 14px 16px;
+    font-size: 13.5px;
+    color: var(--muted);
+    margin-bottom: 18px;
+  }
+  .banner strong { color: var(--text); }
+
+  #search {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--text);
+    font: inherit;
+    padding: 11px 14px;
+  }
+  #search:focus-visible, button:focus-visible, a:focus-visible {
+    outline: 2px solid var(--accent-hover);
+    outline-offset: 2px;
+  }
+  .search-note { font-size: 12.5px; color: var(--muted); margin: 10px 2px 0; }
+
+  ul.rows { list-style: none; margin: 14px 0 0; padding: 0; }
+  ul.rows:empty { margin: 0; }
+  .row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 8px;
+    border-radius: 10px;
+  }
+  .row + .row { border-top: 1px solid var(--border); border-radius: 0; }
+  .row img {
+    width: 40px; height: 40px; border-radius: 50%;
+    background: var(--surface-2);
+    flex: none;
+  }
+  .row .who { flex: 1; min-width: 0; }
+  .row .name {
+    font-weight: 600;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .row .login { font: 12px var(--mono); color: var(--muted); }
+  .live-dot {
+    display: inline-block;
+    background: var(--live);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    padding: 2px 6px;
+    border-radius: 5px;
+    vertical-align: 2px;
+    margin-left: 8px;
+  }
+  .row button {
+    border: 0;
+    cursor: pointer;
+    font: 600 13px/1 system-ui, sans-serif;
+    border-radius: 8px;
+    padding: 9px 14px;
+    flex: none;
+  }
+  .row button:disabled { opacity: .55; cursor: default; }
+  .btn-add { background: var(--accent); color: #fff; }
+  .btn-add:hover:not(:disabled) { background: var(--accent-hover); }
+  .btn-added { background: transparent; color: var(--ok); border: 1px solid var(--border) !important; cursor: default; }
+  .btn-remove { background: var(--surface-2); color: var(--muted); border: 1px solid var(--border) !important; }
+  .btn-remove:hover:not(:disabled) { color: #ff8a80; }
+  .linkish {
+    background: none; border: 0; padding: 4px;
+    color: var(--accent-hover);
+    font: inherit; font-size: 12.5px;
+    cursor: pointer; text-decoration: underline;
+  }
+  .linkish:disabled { opacity: .6; cursor: default; text-decoration: none; }
+
+  .empty { color: var(--muted); font-size: 13.5px; margin: 4px 2px 0; }
+  .hidden { display: none !important; }
+
+  footer {
+    margin-top: 46px;
+    border-top: 1px solid var(--border);
+    padding: 26px 0 40px;
+    display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+    color: var(--muted); font-size: 13.5px;
+  }
+  footer .love { color: var(--text); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a class="wordmark" href="/">notify-when-<span>live</span></a>
+    <span class="pill">for viewers 🔔</span>
+  </header>
+
+  <section class="hero">
+    <h1>Know the moment they go <span class="badge-live">LIVE</span></h1>
+    <p>Pick the streamers you care about and get a real browser notification the second they
+    start streaming — even with this page closed. No account, nothing to install.</p>
+  </section>
+
+  <div class="banner hidden" id="banner"></div>
+
+  <section class="panel">
+    <h2>Add a streamer</h2>
+    <input type="text" id="search" placeholder="Search Twitch channels…"
+           autocomplete="off" spellcheck="false" aria-label="Search Twitch channels">
+    <ul class="rows" id="results" aria-live="polite"></ul>
+    <p class="search-note hidden" id="directory-note">This server only sends notifications for the
+    channels listed below.</p>
+    <ul class="rows" id="directory"></ul>
+  </section>
+
+  <section class="panel">
+    <h2>Your notifications</h2>
+    <ul class="rows" id="mine"></ul>
+    <p class="empty" id="mine-empty">Nothing yet — add a streamer above. The first one will ask
+    for notification permission.</p>
+  </section>
+
+  <footer>
+    <span>Free forever — no accounts, no ads, no tracking. <span class="love">Made with 💜 for streamers and their fans.</span></span>
+    <span><a href="/faq">FAQ</a> &nbsp;·&nbsp; <a href="https://github.com/kevin-huff/twitch-web-notify-when-live">Self-host it on GitHub</a></span>
+  </footer>
+</div>
+
+<script src="/my.js" defer></script>
+</body>
+</html>

@@ -69,6 +69,12 @@ const stmt = {
     FROM channels c ORDER BY subscribers DESC, c.login
   `),
   countChannelsForEndpoint: db.prepare('SELECT COUNT(*) AS n FROM subscriptions WHERE endpoint = ?'),
+  channelsForEndpoint: db.prepare(`
+    SELECT c.* FROM channels c
+    JOIN subscriptions s ON s.channel = c.login
+    WHERE s.endpoint = ?
+    ORDER BY c.display_name COLLATE NOCASE
+  `),
   subscriptionsForChannel: db.prepare('SELECT * FROM subscriptions WHERE channel = ?'),
   deleteEndpointEverywhere: db.prepare('DELETE FROM subscriptions WHERE endpoint = ?'),
   distinctSubscribedChannels: db.prepare('SELECT DISTINCT channel FROM subscriptions'),
@@ -90,6 +96,7 @@ export const countSubscriptionsForChannel = (channel) => stmt.countSubscriptions
 export const countAllSubscriptions = () => stmt.countAllSubscriptions.get().n;
 export const channelsWithCounts = () => stmt.channelsWithCounts.all();
 export const countChannelsForEndpoint = (endpoint) => stmt.countChannelsForEndpoint.get(endpoint).n;
+export const channelsForEndpoint = (endpoint) => stmt.channelsForEndpoint.all(endpoint);
 export const subscriptionsForChannel = (channel) => stmt.subscriptionsForChannel.all(channel);
 export const deleteEndpointEverywhere = (endpoint) => stmt.deleteEndpointEverywhere.run(endpoint);
 export const distinctSubscribedChannels = () => stmt.distinctSubscribedChannels.all().map((r) => r.channel);

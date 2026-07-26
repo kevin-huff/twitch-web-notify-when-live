@@ -3,7 +3,7 @@ import path from 'node:path';
 import express from 'express';
 import { config } from './config.js';
 import * as db from './db.js';
-import { getUsers, getStreams } from './twitch.js';
+import { getUsers, getStreams, searchChannels } from './twitch.js';
 import { vapidPublicKey, sendToSubscription } from './push.js';
 import { handleLiveStream } from './poller.js';
 import { callbackHandler, ensureChannelSubscription, eventsubStatus } from './eventsub.js';
@@ -195,6 +195,75 @@ router.post('/api/test-notification', rateLimiter(10), async (req, res) => {
   res.json({ ok: result === 'sent', result });
 });
 
+// Viewer-facing: search Twitch channels to subscribe to. Results are filtered
+// by the allowlist so viewers only see channels this instance will watch.
+router.get('/api/search', rateLimiter(20), async (req, res) => {
+  const q = String(req.query.q ?? '').trim();
+  if (q.length < 2 || q.length > 50) return res.json({ channels: [] });
+  const results = await searchChannels(q, 10);
+  const allowed = config.channelAllowlist.size
+    ? results.filter((c) => config.channelAllowlist.has(c.broadcaster_login.toLowerCase()))
+    : results;
+  // Twitch ranks fuzzily; an exact login match belongs on top.
+  const qLower = q.toLowerCase();
+  allowed.sort((a, b) =>
+    (b.broadcaster_login.toLowerCase() === qLower) - (a.broadcaster_login.toLowerCase() === qLower));
+  res.json({
+    channels: allowed.slice(0, 8).map((c) => ({
+      login: c.broadcaster_login.toLowerCase(),
+      displayName: c.display_name,
+      profileImageUrl: c.thumbnail_url || null,
+      isLive: Boolean(c.is_live),
+    })),
+  });
+});
+
+// Viewer-facing: on allowlisted instances, the watchable channels as a
+// browsable list (search alone would mostly return channels we'd refuse).
+router.get('/api/directory', rateLimiter(30), async (req, res) => {
+  if (!config.channelAllowlist.size) return res.json({ restricted: false, channels: [] });
+  const logins = [...config.channelAllowlist].slice(0, 50);
+  const missing = logins.filter((login) => LOGIN_RE.test(login) && !db.getChannel(login));
+  if (missing.length) {
+    const users = await getUsers(missing);
+    for (const user of users) {
+      db.upsertChannel({
+        login: user.login.toLowerCase(),
+        broadcaster_id: user.id,
+        display_name: user.display_name,
+        profile_image_url: user.profile_image_url ?? null,
+      });
+    }
+  }
+  res.json({
+    restricted: true,
+    channels: logins.map((login) => db.getChannel(login)).filter(Boolean).map((c) => ({
+      login: c.login,
+      displayName: c.display_name,
+      profileImageUrl: c.profile_image_url,
+      isLive: Boolean(c.is_live),
+    })),
+  });
+});
+
+// Viewer-facing: everything this browser is subscribed to. Same trust model
+// as /api/test-notification — knowing the unguessable endpoint URL is proof
+// of ownership. POST keeps the endpoint out of URLs and access logs.
+router.post('/api/my-subscriptions', rateLimiter(30), (req, res) => {
+  const { endpoint } = req.body ?? {};
+  if (typeof endpoint !== 'string' || !/^https:\/\//.test(endpoint)) {
+    return res.status(400).json({ error: 'invalid_request' });
+  }
+  res.json({
+    channels: db.channelsForEndpoint(endpoint).map((c) => ({
+      login: c.login,
+      displayName: c.display_name,
+      profileImageUrl: c.profile_image_url,
+      isLive: Boolean(c.is_live),
+    })),
+  });
+});
+
 router.post('/api/eventsub/callback', callbackHandler);
 
 router.get('/api/admin/stats', (req, res) => {
@@ -245,6 +314,11 @@ router.get('/sw.js', (req, res) => {
 router.get('/subscribe', (req, res) => {
   pageHeaders(res);
   res.sendFile(path.join(publicDir, 'subscribe.html'));
+});
+
+router.get('/my', (req, res) => {
+  pageHeaders(res);
+  res.sendFile(path.join(publicDir, 'my.html'));
 });
 
 router.get('/faq', (req, res) => {
