@@ -3,6 +3,7 @@ import { config } from './config.js';
 import { router } from './routes.js';
 import { startPoller } from './poller.js';
 import { reconcile } from './eventsub.js';
+import { reconcile as reconcileKick } from './kickevents.js';
 
 const app = express();
 app.disable('x-powered-by');
@@ -24,4 +25,5 @@ app.listen(config.port, () => {
   console.log(`[server] listening on :${config.port} (public: ${config.publicBaseUrl})`);
   startPoller();
   reconcile();
+  reconcileKick();
 });

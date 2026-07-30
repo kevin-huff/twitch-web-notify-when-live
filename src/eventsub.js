@@ -1,7 +1,8 @@
 import crypto from 'node:crypto';
-import { config } from './config.js';
+import { config, allowlistHas } from './config.js';
 import * as db from './db.js';
 import { getStreams, listEventSubSubscriptions, createEventSubSubscription, deleteEventSubSubscription } from './twitch.js';
+import { normalizeTwitchStream } from './platforms.js';
 import { handleLiveStream } from './poller.js';
 
 const CALLBACK_PATH = '/api/eventsub/callback';
@@ -53,9 +54,9 @@ export function callbackHandler(req, res) {
 
 async function handleOnline(event) {
   const login = String(event?.broadcaster_user_login ?? '').toLowerCase();
-  const row = db.getChannel(login);
+  const row = db.getChannel('twitch', login);
   if (!row) return;
-  if (config.channelAllowlist.size && !config.channelAllowlist.has(login)) return;
+  if (config.channelAllowlist.size && !allowlistHas('twitch', login)) return;
 
   // stream.online carries no title/category/thumbnail — fetch them, with one
   // retry because Get Streams can lag a few seconds behind the event.
@@ -64,7 +65,9 @@ async function handleOnline(event) {
     if (attempt) await sleep(7000);
     [stream] = await getStreams([login]).catch(() => []);
   }
-  if (!stream) stream = { id: event.id, title: '', game_name: '', thumbnail_url: null };
+  stream = stream
+    ? normalizeTwitchStream(stream)
+    : { id: event.id, title: '', game_name: '', thumbnail_url: null };
 
   const result = await handleLiveStream(row, stream);
   if (!result.deduped) {
@@ -74,7 +77,7 @@ async function handleOnline(event) {
 
 export async function ensureChannelSubscription(login) {
   if (!eventsubEnabled) return;
-  const row = db.getChannel(login);
+  const row = db.getChannel('twitch', login);
   if (!row) return;
   try {
     await createEventSubSubscription(row.broadcaster_id, config.publicBaseUrl + CALLBACK_PATH, secret);
@@ -93,9 +96,12 @@ export async function reconcile() {
   }
   try {
     const callback = config.publicBaseUrl + CALLBACK_PATH;
-    let logins = db.distinctSubscribedChannels();
-    if (config.channelAllowlist.size) logins = logins.filter((l) => config.channelAllowlist.has(l));
-    const wanted = new Set(logins.map((l) => db.getChannel(l)?.broadcaster_id).filter(Boolean));
+    let subscribed = db.distinctSubscribedChannels().filter((s) => s.platform === 'twitch');
+    if (config.channelAllowlist.size) {
+      subscribed = subscribed.filter((s) => allowlistHas('twitch', s.channel));
+    }
+    const wanted = new Set(
+      subscribed.map((s) => db.getChannel('twitch', s.channel)?.broadcaster_id).filter(Boolean));
 
     let active = 0;
     for (const sub of await listEventSubSubscriptions()) {

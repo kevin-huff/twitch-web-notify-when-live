@@ -1,12 +1,15 @@
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import express from 'express';
-import { config } from './config.js';
+import { config, allowlistHas } from './config.js';
 import * as db from './db.js';
-import { getUsers, getStreams, searchChannels } from './twitch.js';
+import { getUsers, searchChannels } from './twitch.js';
+import * as kick from './kick.js';
+import { PLATFORMS, normalizePlatform, fetchLiveStream, liveNotificationPayload } from './platforms.js';
 import { vapidPublicKey, sendToSubscription } from './push.js';
 import { handleLiveStream } from './poller.js';
 import { callbackHandler, ensureChannelSubscription, eventsubStatus } from './eventsub.js';
+import * as kickevents from './kickevents.js';
 
 const publicDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
 
@@ -14,7 +17,7 @@ export const router = express.Router();
 
 const PAGE_CSP = [
   "default-src 'self'",
-  "img-src 'self' https://static-cdn.jtvnw.net",
+  "img-src 'self' https://static-cdn.jtvnw.net https://files.kick.com https://images.kick.com",
   "style-src 'self' 'unsafe-inline'",
   "script-src 'self'",
   "connect-src 'self'",
@@ -71,45 +74,78 @@ router.use('/api', (req, res, next) => {
   next();
 });
 
-const LOGIN_RE = /^[a-z0-9_]{3,25}$/;
-
-async function resolveChannel(rawLogin) {
+function validLogin(platform, rawLogin) {
   const login = String(rawLogin ?? '').trim().toLowerCase();
-  if (!LOGIN_RE.test(login)) return { status: 404, error: 'channel_not_found' };
-  if (config.channelAllowlist.size && !config.channelAllowlist.has(login)) {
+  return PLATFORMS[platform].loginRe.test(login) ? login : null;
+}
+
+function channelJson(row) {
+  return {
+    platform: row.platform,
+    login: row.login,
+    displayName: row.display_name,
+    profileImageUrl: row.profile_image_url,
+    isLive: Boolean(row.is_live),
+  };
+}
+
+// Kick's channels endpoint has the slug and broadcaster id but not the
+// display name/avatar — those come from the users endpoint.
+async function upsertKickChannels(slugs) {
+  const channels = await kick.getChannels(slugs);
+  if (!channels.length) return;
+  const users = await kick.getUsers(channels.map((c) => c.broadcaster_user_id)).catch(() => []);
+  const byId = new Map(users.map((u) => [String(u.user_id), u]));
+  for (const c of channels) {
+    const user = byId.get(String(c.broadcaster_user_id));
+    db.upsertChannel({
+      platform: 'kick',
+      login: c.slug.toLowerCase(),
+      broadcaster_id: String(c.broadcaster_user_id),
+      display_name: user?.name || c.slug,
+      profile_image_url: user?.profile_picture || null,
+    });
+  }
+}
+
+async function resolveChannel(rawLogin, rawPlatform) {
+  const platform = normalizePlatform(rawPlatform);
+  if (!platform) return { status: 400, error: 'platform_not_supported' };
+  const login = validLogin(platform, rawLogin);
+  if (!login) return { status: 404, error: 'channel_not_found' };
+  if (config.channelAllowlist.size && !allowlistHas(platform, login)) {
     return { status: 403, error: 'channel_not_allowed' };
   }
-  let row = db.getChannel(login);
+  let row = db.getChannel(platform, login);
   if (!row) {
-    const users = await getUsers([login]);
-    if (!users.length) return { status: 404, error: 'channel_not_found' };
-    const user = users[0];
-    db.upsertChannel({
-      login,
-      broadcaster_id: user.id,
-      display_name: user.display_name,
-      profile_image_url: user.profile_image_url ?? null,
-    });
-    row = db.getChannel(login);
+    if (platform === 'kick') {
+      await upsertKickChannels([login]);
+    } else {
+      const users = await getUsers([login]);
+      if (users.length) {
+        db.upsertChannel({
+          platform: 'twitch',
+          login,
+          broadcaster_id: users[0].id,
+          display_name: users[0].display_name,
+          profile_image_url: users[0].profile_image_url ?? null,
+        });
+      }
+    }
+    row = db.getChannel(platform, login);
+    if (!row) return { status: 404, error: 'channel_not_found' };
   }
   return { row };
 }
 
 router.get('/api/config', rateLimiter(60), async (req, res) => {
-  const { row, status, error } = await resolveChannel(req.query.channel);
+  const { row, status, error } = await resolveChannel(req.query.channel, req.query.platform);
   if (error) return res.status(status).json({ error });
-  res.json({
-    vapidPublicKey,
-    channel: {
-      login: row.login,
-      displayName: row.display_name,
-      profileImageUrl: row.profile_image_url,
-    },
-  });
+  res.json({ vapidPublicKey, channel: channelJson(row) });
 });
 
 router.post('/api/subscribe', rateLimiter(30), async (req, res) => {
-  const { channel, subscription } = req.body ?? {};
+  const { channel, platform, subscription } = req.body ?? {};
   const endpoint = subscription?.endpoint;
   const p256dh = subscription?.keys?.p256dh;
   const auth = subscription?.keys?.auth;
@@ -118,9 +154,10 @@ router.post('/api/subscribe', rateLimiter(30), async (req, res) => {
     || typeof auth !== 'string' || !auth) {
     return res.status(400).json({ error: 'invalid_subscription' });
   }
-  const { row, status, error } = await resolveChannel(channel);
+  const { row, status, error } = await resolveChannel(channel, platform);
   if (error) return res.status(status).json({ error });
   db.addSubscription({
+    platform: row.platform,
     channel: row.login,
     endpoint,
     p256dh,
@@ -128,8 +165,11 @@ router.post('/api/subscribe', rateLimiter(30), async (req, res) => {
     origin: req.headers.origin ?? null,
   });
   res.status(201).json({ ok: true });
-  if (db.countSubscriptionsForChannel(row.login) === 1) {
-    ensureChannelSubscription(row.login).catch(() => {});
+  if (db.countSubscriptionsForChannel(row.platform, row.login) === 1) {
+    const ensure = row.platform === 'kick'
+      ? kickevents.ensureChannelSubscription
+      : ensureChannelSubscription;
+    ensure(row.login).catch(() => {});
   }
   sendWelcomeIfLive(row, { endpoint, p256dh, auth }).catch((err) =>
     console.warn('[push] welcome check failed:', err.message ?? err));
@@ -139,27 +179,24 @@ router.post('/api/subscribe', rateLimiter(30), async (req, res) => {
 // live, so they can see it works. Claim the stream id afterwards so the
 // poller doesn't send them the same stream again.
 async function sendWelcomeIfLive(channelRow, sub) {
-  const [stream] = await getStreams([channelRow.login]);
+  const stream = await fetchLiveStream(channelRow.platform, channelRow.login);
   if (!stream) return;
   await sendToSubscription(sub, {
+    ...liveNotificationPayload(channelRow, stream),
     title: `Notifications are on — ${channelRow.display_name} is live right now!`,
-    body: stream.title
-      ? stream.game_name ? `${stream.title} — ${stream.game_name}` : stream.title
-      : 'Streaming now on Twitch',
-    icon: channelRow.profile_image_url || undefined,
-    url: `https://twitch.tv/${channelRow.login}`,
-    tag: `twn-${channelRow.login}-${stream.id}`,
+    image: undefined,
   });
-  db.claimStream(channelRow.login, String(stream.id));
+  db.claimStream(channelRow.platform, channelRow.login, String(stream.id));
 }
 
 router.post('/api/unsubscribe', rateLimiter(30), (req, res) => {
-  const { channel, endpoint } = req.body ?? {};
-  const login = String(channel ?? '').trim().toLowerCase();
-  if (!LOGIN_RE.test(login) || typeof endpoint !== 'string' || !endpoint) {
+  const { channel, platform: rawPlatform, endpoint } = req.body ?? {};
+  const platform = normalizePlatform(rawPlatform);
+  const login = platform && validLogin(platform, channel);
+  if (!login || typeof endpoint !== 'string' || !endpoint) {
     return res.status(400).json({ error: 'invalid_request' });
   }
-  db.removeSubscription(login, endpoint);
+  db.removeSubscription(platform, login, endpoint);
   res.json({ ok: true, remainingChannelsForEndpoint: db.countChannelsForEndpoint(endpoint) });
 });
 
@@ -173,61 +210,88 @@ setInterval(() => {
 }, 60_000).unref();
 
 router.post('/api/test-notification', rateLimiter(10), async (req, res) => {
-  const { channel, endpoint } = req.body ?? {};
-  const login = String(channel ?? '').trim().toLowerCase();
-  if (!LOGIN_RE.test(login) || typeof endpoint !== 'string' || !endpoint) {
+  const { channel, platform: rawPlatform, endpoint } = req.body ?? {};
+  const platform = normalizePlatform(rawPlatform);
+  const login = platform && validLogin(platform, channel);
+  if (!login || typeof endpoint !== 'string' || !endpoint) {
     return res.status(400).json({ error: 'invalid_request' });
   }
-  const sub = db.getSubscription(login, endpoint);
+  const sub = db.getSubscription(platform, login, endpoint);
   if (!sub) return res.status(404).json({ error: 'subscription_not_found' });
   const last = testCooldown.get(endpoint) ?? 0;
   if (Date.now() - last < 30_000) return res.status(429).json({ error: 'rate_limited' });
   testCooldown.set(endpoint, Date.now());
 
-  const row = db.getChannel(login);
+  const row = db.getChannel(platform, login);
   const result = await sendToSubscription(sub, {
     title: 'This is your test notification 🔔',
     body: `Notifications for ${row.display_name} are working.`,
     icon: row.profile_image_url || undefined,
-    url: `https://twitch.tv/${login}`,
-    tag: `twn-test-${login}`,
+    url: PLATFORMS[platform].channelUrl(login),
+    tag: `twn-test-${platform}-${login}`,
   });
   res.json({ ok: result === 'sent', result });
 });
 
-// Viewer-facing: search Twitch channels to subscribe to. Results are filtered
-// by the allowlist so viewers only see channels this instance will watch.
+// Viewer-facing: search channels to subscribe to. Twitch has a fuzzy search
+// API; Kick's public API has none, so a query that looks like a slug is tried
+// as an exact match. Results are filtered by the allowlist so viewers only
+// see channels this instance will watch.
 router.get('/api/search', rateLimiter(20), async (req, res) => {
   const q = String(req.query.q ?? '').trim();
   if (q.length < 2 || q.length > 50) return res.json({ channels: [] });
-  const results = await searchChannels(q, 10);
-  const allowed = config.channelAllowlist.size
-    ? results.filter((c) => config.channelAllowlist.has(c.broadcaster_login.toLowerCase()))
-    : results;
-  // Twitch ranks fuzzily; an exact login match belongs on top.
-  const qLower = q.toLowerCase();
-  allowed.sort((a, b) =>
-    (b.broadcaster_login.toLowerCase() === qLower) - (a.broadcaster_login.toLowerCase() === qLower));
-  res.json({
-    channels: allowed.slice(0, 8).map((c) => ({
+  const platform = String(req.query.platform ?? '').trim().toLowerCase() || null;
+  const channels = [];
+
+  if (config.kickEnabled && (platform === 'kick' || !platform)) {
+    const slug = q.toLowerCase();
+    if (PLATFORMS.kick.loginRe.test(slug)
+      && (!config.channelAllowlist.size || allowlistHas('kick', slug))) {
+      const { row } = await resolveChannel(slug, 'kick').catch(() => ({}));
+      if (row) channels.push(channelJson(row));
+    }
+  }
+
+  if (platform === 'twitch' || !platform) {
+    const results = await searchChannels(q, 10).catch(() => []);
+    const allowed = config.channelAllowlist.size
+      ? results.filter((c) => allowlistHas('twitch', c.broadcaster_login.toLowerCase()))
+      : results;
+    // Twitch ranks fuzzily; an exact login match belongs on top.
+    const qLower = q.toLowerCase();
+    allowed.sort((a, b) =>
+      (b.broadcaster_login.toLowerCase() === qLower) - (a.broadcaster_login.toLowerCase() === qLower));
+    channels.push(...allowed.slice(0, 8).map((c) => ({
+      platform: 'twitch',
       login: c.broadcaster_login.toLowerCase(),
       displayName: c.display_name,
       profileImageUrl: c.thumbnail_url || null,
       isLive: Boolean(c.is_live),
-    })),
-  });
+    })));
+  }
+
+  res.json({ channels });
 });
 
 // Viewer-facing: on allowlisted instances, the watchable channels as a
 // browsable list (search alone would mostly return channels we'd refuse).
 router.get('/api/directory', rateLimiter(30), async (req, res) => {
   if (!config.channelAllowlist.size) return res.json({ restricted: false, channels: [] });
-  const logins = [...config.channelAllowlist].slice(0, 50);
-  const missing = logins.filter((login) => LOGIN_RE.test(login) && !db.getChannel(login));
-  if (missing.length) {
-    const users = await getUsers(missing);
+  const entries = [...config.channelAllowlist].slice(0, 50)
+    .map((entry) => {
+      const [platform, login] = entry.split(':');
+      return platformEnabledEntry(platform, login);
+    })
+    .filter(Boolean);
+
+  const missing = entries.filter(({ platform, login }) => !db.getChannel(platform, login));
+  const missingTwitch = missing.filter((e) => e.platform === 'twitch').map((e) => e.login);
+  const missingKick = missing.filter((e) => e.platform === 'kick').map((e) => e.login);
+  if (missingTwitch.length) {
+    const users = await getUsers(missingTwitch).catch(() => []);
     for (const user of users) {
       db.upsertChannel({
+        platform: 'twitch',
         login: user.login.toLowerCase(),
         broadcaster_id: user.id,
         display_name: user.display_name,
@@ -235,16 +299,22 @@ router.get('/api/directory', rateLimiter(30), async (req, res) => {
       });
     }
   }
+  if (missingKick.length) await upsertKickChannels(missingKick).catch(() => {});
+
   res.json({
     restricted: true,
-    channels: logins.map((login) => db.getChannel(login)).filter(Boolean).map((c) => ({
-      login: c.login,
-      displayName: c.display_name,
-      profileImageUrl: c.profile_image_url,
-      isLive: Boolean(c.is_live),
-    })),
+    channels: entries
+      .map(({ platform, login }) => db.getChannel(platform, login))
+      .filter(Boolean)
+      .map(channelJson),
   });
 });
+
+function platformEnabledEntry(platform, login) {
+  if (!(platform in PLATFORMS)) return null;
+  if (platform === 'kick' && !config.kickEnabled) return null;
+  return PLATFORMS[platform].loginRe.test(login) ? { platform, login } : null;
+}
 
 // Viewer-facing: everything this browser is subscribed to. Same trust model
 // as /api/test-notification — knowing the unguessable endpoint URL is proof
@@ -254,17 +324,11 @@ router.post('/api/my-subscriptions', rateLimiter(30), (req, res) => {
   if (typeof endpoint !== 'string' || !/^https:\/\//.test(endpoint)) {
     return res.status(400).json({ error: 'invalid_request' });
   }
-  res.json({
-    channels: db.channelsForEndpoint(endpoint).map((c) => ({
-      login: c.login,
-      displayName: c.display_name,
-      profileImageUrl: c.profile_image_url,
-      isLive: Boolean(c.is_live),
-    })),
-  });
+  res.json({ channels: db.channelsForEndpoint(endpoint).map(channelJson) });
 });
 
 router.post('/api/eventsub/callback', callbackHandler);
+router.post('/api/kick/callback', kickevents.callbackHandler);
 
 router.get('/api/admin/stats', (req, res) => {
   if (!config.adminToken) return res.status(404).json({ error: 'not_found' });
@@ -272,6 +336,7 @@ router.get('/api/admin/stats', (req, res) => {
     return res.status(401).json({ error: 'unauthorized' });
   }
   const channels = db.channelsWithCounts().map((c) => ({
+    platform: c.platform,
     login: c.login,
     displayName: c.display_name,
     isLive: Boolean(c.is_live),
@@ -283,6 +348,7 @@ router.get('/api/admin/stats', (req, res) => {
   res.json({
     totals: { channels: channels.length, subscriptions: db.countAllSubscriptions() },
     eventsub: eventsubStatus,
+    kickEvents: kickevents.kickEventsStatus,
     pollIntervalSeconds: config.pollIntervalSeconds,
     channels,
   });
@@ -293,7 +359,7 @@ router.post('/api/test/notify', async (req, res) => {
   if (req.headers.authorization !== `Bearer ${config.adminToken}`) {
     return res.status(401).json({ error: 'unauthorized' });
   }
-  const { row, status, error } = await resolveChannel(req.body?.channel);
+  const { row, status, error } = await resolveChannel(req.body?.channel, req.body?.platform);
   if (error) return res.status(status).json({ error });
   const stream = {
     id: req.body?.streamId ?? `test-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,

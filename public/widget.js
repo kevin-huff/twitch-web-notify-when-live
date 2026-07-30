@@ -7,10 +7,16 @@
     console.warn('[twitch-notify] widget script tag is missing data-channel');
     return;
   }
+  const platform = (script.dataset.platform || 'twitch').trim().toLowerCase();
+  if (platform !== 'twitch' && platform !== 'kick') {
+    console.warn('[twitch-notify] unknown data-platform:', platform);
+    return;
+  }
 
   const base = script.src.replace(/\/widget\.js(\?.*)?$/, '');
   const serviceOrigin = new URL(script.src).origin;
-  const lsKey = 'twn:sub:' + channel;
+  // Twitch keys keep their pre-Kick format so existing subscriptions stay recognized.
+  const lsKey = 'twn:sub:' + (platform === 'kick' ? 'kick:' + channel : channel);
 
   const LABELS = {
     default: script.dataset.label || 'Notify me when live',
@@ -61,8 +67,8 @@
   // Per-tag customization via data- attributes (falls back to CSS custom
   // properties inherited from the page, then to the built-in defaults).
   const overrides = {
-    '--twn-bg': script.dataset.bg,
-    '--twn-color': script.dataset.color,
+    '--twn-bg': script.dataset.bg || (platform === 'kick' ? '#53fc18' : undefined),
+    '--twn-color': script.dataset.color || (platform === 'kick' && !script.dataset.bg ? '#000' : undefined),
     '--twn-bg-subscribed': script.dataset.bgSubscribed,
     '--twn-radius': script.dataset.radius && /^\d+(\.\d+)?$/.test(script.dataset.radius)
       ? script.dataset.radius + 'px'
@@ -105,7 +111,7 @@
     const res = await fetch(base + '/api/subscribe', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ channel, subscription: sub.toJSON() }),
+      body: JSON.stringify({ channel, platform, subscription: sub.toJSON() }),
     });
     if (!res.ok) throw new Error('subscribe failed: ' + res.status);
     storage.set(lsKey, '1');
@@ -118,7 +124,7 @@
       const res = await fetch(base + '/api/unsubscribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ channel, endpoint: sub.endpoint }),
+        body: JSON.stringify({ channel, platform, endpoint: sub.endpoint }),
       });
       const data = await res.json();
       if (data.remainingChannelsForEndpoint === 0) await sub.unsubscribe();
@@ -129,8 +135,8 @@
 
   function openPopup() {
     window.open(
-      base + '/subscribe?channel=' + encodeURIComponent(channel),
-      'twn-' + channel,
+      base + '/subscribe?channel=' + encodeURIComponent(channel) + '&platform=' + encodeURIComponent(platform),
+      'twn-' + platform + '-' + channel,
       'width=420,height=560,popup=yes',
     );
   }
@@ -161,7 +167,8 @@
 
     let cfg = null;
     try {
-      const res = await fetch(base + '/api/config?channel=' + encodeURIComponent(channel));
+      const res = await fetch(base + '/api/config?channel=' + encodeURIComponent(channel)
+        + '&platform=' + encodeURIComponent(platform));
       if (!res.ok) {
         console.warn('[twitch-notify] channel rejected by server:', (await res.json()).error);
         btn.remove();
@@ -194,7 +201,7 @@
     window.addEventListener('message', (event) => {
       if (event.origin !== serviceOrigin) return;
       const msg = event.data;
-      if (!msg || msg.channel !== channel) return;
+      if (!msg || msg.channel !== channel || (msg.platform || 'twitch') !== platform) return;
       if (msg.type === 'twn:subscribed') {
         storage.set(lsKey, '1');
         setState('subscribed');

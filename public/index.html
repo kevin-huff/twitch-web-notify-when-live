@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Get your "notify me when live" button</title>
-<meta name="description" content="A free notification button for your stream's website. Fans click once and get a browser notification when you go live on Twitch.">
+<meta name="description" content="A free notification button for your stream's website. Fans click once and get a browser notification when you go live on Twitch or Kick.">
 <style>
   :root {
     --bg: #0e0c12;
@@ -85,7 +85,8 @@
   }
   .field { margin-bottom: 16px; }
   .field label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
-  .field input[type="text"] {
+  .field input[type="text"],
+  .field select {
     width: 100%;
     background: var(--bg);
     border: 1px solid var(--border);
@@ -94,7 +95,7 @@
     font: inherit;
     padding: 9px 11px;
   }
-  .field input[type="text"]:focus-visible,
+  .field input[type="text"]:focus-visible, .field select:focus-visible,
   button:focus-visible, a:focus-visible, input:focus-visible {
     outline: 2px solid var(--accent-hover);
     outline-offset: 2px;
@@ -256,7 +257,14 @@
     <div class="controls">
       <h2>Your button</h2>
       <div class="field">
-        <label for="channel">Twitch channel</label>
+        <label for="platform">Platform</label>
+        <select id="platform">
+          <option value="twitch" selected>Twitch</option>
+          <option value="kick">Kick</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="channel">Channel</label>
         <input type="text" id="channel" placeholder="yourchannel" autocomplete="off" spellcheck="false">
       </div>
       <div id="channel-status" role="status"></div>

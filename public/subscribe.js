@@ -1,7 +1,10 @@
 (() => {
   const params = new URLSearchParams(location.search);
   const channel = (params.get('channel') || '').trim().toLowerCase();
-  const lsKey = 'twn:sub:' + channel;
+  const platform = (params.get('platform') || 'twitch').trim().toLowerCase();
+  const platformName = platform === 'kick' ? 'Kick' : 'Twitch';
+  // Twitch keys keep their pre-Kick format so existing subscriptions stay recognized.
+  const lsKey = 'twn:sub:' + (platform === 'kick' ? 'kick:' + channel : channel);
 
   const el = {
     avatar: document.getElementById('avatar'),
@@ -23,7 +26,7 @@
   }
 
   function notifyOpener(type) {
-    if (window.opener) window.opener.postMessage({ type, channel }, '*');
+    if (window.opener) window.opener.postMessage({ type, channel, platform }, '*');
   }
 
   function urlBase64ToUint8Array(base64String) {
@@ -40,14 +43,15 @@
     el.action.textContent = subscribed ? '✓ Subscribed — click to unsubscribe' : 'Notify me when live';
     el.desc.textContent = subscribed
       ? `You'll get a notification when ${displayName} goes live.`
-      : `Get a browser notification when ${displayName} goes live on Twitch.`;
+      : `Get a browser notification when ${displayName} goes live on ${platformName}.`;
     el.test.classList.toggle('hidden', !subscribed);
   }
 
   async function main() {
     if (!channel) return fail('No channel specified.');
 
-    const res = await fetch('/api/config?channel=' + encodeURIComponent(channel));
+    const res = await fetch('/api/config?channel=' + encodeURIComponent(channel)
+      + '&platform=' + encodeURIComponent(platform));
     if (!res.ok) return fail('Channel not found or not allowed on this server.');
     const cfg = await res.json();
 
@@ -85,7 +89,7 @@
         const r = await fetch('/api/test-notification', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ channel, endpoint: sub.endpoint }),
+          body: JSON.stringify({ channel, platform, endpoint: sub.endpoint }),
         });
         const data = await r.json();
         el.test.textContent = data.ok ? 'Sent — check your notifications' : 'Could not send. Try again in a moment.';
@@ -107,7 +111,7 @@
             const r = await fetch('/api/unsubscribe', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ channel, endpoint: sub.endpoint }),
+              body: JSON.stringify({ channel, platform, endpoint: sub.endpoint }),
             });
             const data = await r.json();
             if (data.remainingChannelsForEndpoint === 0) await sub.unsubscribe();
@@ -133,7 +137,7 @@
           const r = await fetch('/api/subscribe', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ channel, subscription: sub.toJSON() }),
+            body: JSON.stringify({ channel, platform, subscription: sub.toJSON() }),
           });
           if (!r.ok) throw new Error('subscribe failed');
           localStorage.setItem(lsKey, '1');

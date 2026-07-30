@@ -11,12 +11,12 @@ self.addEventListener('push', (event) => {
       icon: data.icon || undefined,
       image: data.image || undefined,
       tag: data.tag || undefined,
-      data: { url: data.url || 'https://twitch.tv' },
+      data: { url: data.url || '/' },
     }),
   );
 });
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  event.waitUntil(clients.openWindow(event.notification.data?.url || 'https://twitch.tv'));
+  event.waitUntil(clients.openWindow(event.notification.data?.url || '/'));
 });

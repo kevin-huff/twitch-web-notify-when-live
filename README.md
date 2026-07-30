@@ -1,6 +1,6 @@
 # twitch-web-notify-when-live
 
-Self-hostable web push notifications for when a Twitch channel goes live — with a drop-in widget any streamer can paste into their website.
+Self-hostable web push notifications for when a Twitch (or Kick) channel goes live — with a drop-in widget any streamer can paste into their website.
 
 Visitors click a "Notify me when live" button, grant notification permission once, and get a real browser push notification (even with the site closed) the moment the channel goes live. No accounts, no third-party push provider — just this service, your Twitch app credentials, and the browser Push API.
 
@@ -79,15 +79,21 @@ The widget detects it automatically and subscribes visitors right on your site.
 | Env var | Required | Default | Purpose |
 |---|---|---|---|
 | `TWITCH_CLIENT_ID` / `TWITCH_CLIENT_SECRET` | yes | — | App token via client credentials |
+| `KICK_CLIENT_ID` / `KICK_CLIENT_SECRET` | no | *(Kick off)* | Enables Kick channels (create an app at kick.com → Settings → Developer) |
 | `PUBLIC_BASE_URL` | yes | — | Public HTTPS URL of this service |
 | `PORT` | no | `8080` | Listen port |
 | `DB_PATH` | no | `data/notify.db` (`/data/notify.db` in Docker) | SQLite location |
-| `POLL_INTERVAL_SECONDS` | no | `60` | Twitch poll cadence (min 10) |
-| `CHANNEL_ALLOWLIST` | no | *(any)* | Comma-separated logins this instance will watch. **Recommended in production** — otherwise anyone can make your instance poll arbitrary channels |
+| `POLL_INTERVAL_SECONDS` | no | `60` | Live-check poll cadence (min 10) |
+| `CHANNEL_ALLOWLIST` | no | *(any)* | Comma-separated logins this instance will watch (`somechannel` = Twitch, `kick:somechannel` = Kick). **Recommended in production** — otherwise anyone can make your instance poll arbitrary channels |
 | `ALLOWED_ORIGINS` | no | *(open CORS)* | Comma-separated origins allowed to call the API |
 | `VAPID_SUBJECT` | no | `mailto:admin@example.com` | Contact for push services |
 | `ADMIN_TOKEN` | no | *(off)* | Enables `POST /api/test/notify` and the `/admin` stats page |
 | `EVENTSUB_SECRET` | no | *(auto-generated, persisted)* | Override the EventSub webhook HMAC secret |
+| `KICK_PUBLIC_KEY` | no | *(fetched from Kick)* | Override the PEM key used to verify Kick webhook signatures |
+
+### Kick support
+
+Set `KICK_CLIENT_ID`/`KICK_CLIENT_SECRET` and Kick channels work everywhere Twitch ones do — the widget (`data-platform="kick"` in the embed snippet, which the builder adds for you), the viewer page, and the API (`platform` parameter, defaulting to `twitch` for backward compatibility). Going live is detected via Kick's `livestream.status.updated` webhooks plus the same poller fallback. Webhooks are delivered to the URL configured in your Kick app settings — set it to `<PUBLIC_BASE_URL>/api/kick/callback` and enable webhooks there; signatures are verified against Kick's published signing key. Existing databases are migrated automatically on first boot (existing rows become `twitch`).
 
 Subscribed fans can send themselves a test push from the subscribe popup. The API endpoints are rate-limited per IP (`trust proxy` is enabled, so run behind a reverse proxy/Railway). With `ADMIN_TOKEN` set, `/admin` shows per-channel subscriber counts, live status, and EventSub state.
 

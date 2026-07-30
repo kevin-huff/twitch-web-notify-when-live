@@ -1,6 +1,7 @@
 import webpush from 'web-push';
 import { config } from './config.js';
 import { getKV, setKV, subscriptionsForChannel, deleteEndpointEverywhere } from './db.js';
+import { liveNotificationPayload } from './platforms.js';
 
 let publicKey = getKV('vapid_public_key');
 let privateKey = getKV('vapid_private_key');
@@ -16,8 +17,8 @@ export const vapidPublicKey = publicKey;
 
 const SEND_CHUNK = 50;
 
-export async function sendToChannel(login, payloadObj) {
-  const subs = subscriptionsForChannel(login);
+export async function sendToChannel(platform, login, payloadObj) {
+  const subs = subscriptionsForChannel(platform, login);
   const payload = JSON.stringify(payloadObj);
   let sent = 0;
   let pruned = 0;
@@ -42,7 +43,7 @@ export async function sendToChannel(login, payloadObj) {
         deleteEndpointEverywhere(subs[i + j].endpoint);
         pruned++;
       } else {
-        console.warn(`[push] send failed for ${login}: ${status ?? result.reason}`);
+        console.warn(`[push] send failed for ${platform}:${login}: ${status ?? result.reason}`);
       }
     });
   }
@@ -68,17 +69,5 @@ export async function sendToSubscription(sub, payloadObj) {
 }
 
 export async function notifyChannelLive(channelRow, stream) {
-  const payload = {
-    title: `${channelRow.display_name} is live!`,
-    body: stream.title
-      ? stream.game_name ? `${stream.title} — ${stream.game_name}` : stream.title
-      : 'Streaming now on Twitch',
-    icon: channelRow.profile_image_url || undefined,
-    image: stream.thumbnail_url
-      ? stream.thumbnail_url.replace('{width}', '640').replace('{height}', '360')
-      : undefined,
-    url: `https://twitch.tv/${channelRow.login}`,
-    tag: `twn-${channelRow.login}-${stream.id}`,
-  };
-  return sendToChannel(channelRow.login, payload);
+  return sendToChannel(channelRow.platform, channelRow.login, liveNotificationPayload(channelRow, stream));
 }

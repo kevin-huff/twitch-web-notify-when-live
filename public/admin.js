@@ -28,7 +28,10 @@
 
     el('t-channels').textContent = data.totals.channels;
     el('t-subs').textContent = data.totals.subscriptions;
-    el('t-eventsub').textContent = data.eventsub.enabled ? data.eventsub.active + ' active' : 'off';
+    const webhookText = (label, s) => label + ' ' + (s?.enabled ? s.active + ' active' : 'off');
+    el('t-eventsub').textContent = data.kickEvents
+      ? webhookText('twitch', data.eventsub) + ' · ' + webhookText('kick', data.kickEvents)
+      : (data.eventsub.enabled ? data.eventsub.active + ' active' : 'off');
     el('t-poll').textContent = data.pollIntervalSeconds + 's';
 
     const rows = el('rows');
@@ -41,6 +44,12 @@
       dot.className = 'dot' + (c.isLive ? ' live' : '');
       name.appendChild(dot);
       name.appendChild(document.createTextNode(c.displayName));
+      if (c.platform && c.platform !== 'twitch') {
+        const tag = document.createElement('span');
+        tag.className = 'muted';
+        tag.textContent = ' · ' + c.platform;
+        name.appendChild(tag);
+      }
       tr.appendChild(name);
 
       const subs = document.createElement('td');
