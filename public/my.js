@@ -5,6 +5,8 @@
     results: document.getElementById('results'),
     directory: document.getElementById('directory'),
     directoryNote: document.getElementById('directory-note'),
+    chips: document.getElementById('platform-chips'),
+    kickNote: document.getElementById('kick-note'),
     mine: document.getElementById('mine'),
     mineEmpty: document.getElementById('mine-empty'),
   };
@@ -14,6 +16,8 @@
   let lastResults = [];
   let directoryChannels = [];
   let directoryFilter = '';
+  let searchPlatform = '';
+  let kickEnabled = false;
   let mineChannels = [];
   const subscribed = new Set();
 
@@ -56,6 +60,13 @@
     const name = document.createElement('div');
     name.className = 'name';
     name.textContent = channel.displayName;
+    if (kickEnabled) {
+      const badge = document.createElement('span');
+      const p = channel.platform === 'kick' ? 'kick' : 'twitch';
+      badge.className = 'platform-badge ' + p;
+      badge.textContent = p.toUpperCase();
+      name.appendChild(badge);
+    }
     if (channel.isLive) {
       const dot = document.createElement('span');
       dot.className = 'live-dot';
@@ -88,10 +99,13 @@
   function render() {
     el.results.replaceChildren(
       ...lastResults.map((c) => channelRow(c, [addButton(c)])));
-    const visibleDirectory = directoryFilter
-      ? directoryChannels.filter((c) =>
-          c.login.includes(directoryFilter) || c.displayName.toLowerCase().includes(directoryFilter))
+    let visibleDirectory = searchPlatform
+      ? directoryChannels.filter((c) => (c.platform || 'twitch') === searchPlatform)
       : directoryChannels;
+    if (directoryFilter) {
+      visibleDirectory = visibleDirectory.filter((c) =>
+        c.login.includes(directoryFilter) || c.displayName.toLowerCase().includes(directoryFilter));
+    }
     el.directory.replaceChildren(
       ...visibleDirectory.map((c) => channelRow(c, [addButton(c)])));
     el.mine.replaceChildren(...mineChannels.map((c) => {
@@ -235,7 +249,8 @@
       return render();
     }
     try {
-      const res = await fetch('/api/search?q=' + encodeURIComponent(q));
+      const res = await fetch('/api/search?q=' + encodeURIComponent(q)
+        + (searchPlatform ? '&platform=' + encodeURIComponent(searchPlatform) : ''));
       if (!res.ok || seq !== searchSeq) return;
       lastResults = (await res.json()).channels;
       render();
@@ -260,9 +275,27 @@
       searchTimer = setTimeout(() => runSearch(q), 300);
     });
 
+    el.chips.addEventListener('click', (event) => {
+      const chip = event.target.closest('.chip');
+      if (!chip) return;
+      searchPlatform = chip.dataset.platform;
+      for (const c of el.chips.querySelectorAll('.chip')) c.classList.toggle('active', c === chip);
+      const kickSearch = searchPlatform === 'kick' && !directoryChannels.length;
+      el.kickNote.classList.toggle('hidden', !kickSearch);
+      el.search.placeholder = directoryChannels.length
+        ? 'Filter channels…'
+        : kickSearch ? 'Exact Kick username…' : 'Search channels…';
+      runSearch(el.search.value.trim());
+    });
+
     fetch('/api/directory')
       .then((res) => (res.ok ? res.json() : { restricted: false, channels: [] }))
       .then((data) => {
+        if (data.platforms?.includes('kick')) {
+          kickEnabled = true;
+          el.chips.classList.remove('hidden');
+          render();
+        }
         if (!data.restricted) return;
         directoryChannels = data.channels;
         el.directoryNote.classList.remove('hidden');

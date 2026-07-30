@@ -91,6 +91,19 @@
   }
   .banner strong { color: var(--text); }
 
+  .chips { display: flex; gap: 8px; margin-bottom: 12px; }
+  .chip {
+    font: 600 12.5px/1 system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 8px 14px;
+    cursor: pointer;
+  }
+  .chip:hover { color: var(--text); }
+  .chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
   #search {
     width: 100%;
     background: var(--bg);
@@ -125,6 +138,18 @@
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .row .login { font: 12px var(--mono); color: var(--muted); }
+  .platform-badge {
+    display: inline-block;
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    padding: 2px 6px;
+    border-radius: 5px;
+    vertical-align: 2px;
+    margin-left: 8px;
+  }
+  .platform-badge.twitch { background: #9146ff; color: #fff; }
+  .platform-badge.kick { background: #53fc18; color: #000; }
   .live-dot {
     display: inline-block;
     background: var(--live);
@@ -189,8 +214,15 @@
 
   <section class="panel">
     <h2>Add a streamer</h2>
+    <div class="chips hidden" id="platform-chips" role="group" aria-label="Filter by platform">
+      <button type="button" class="chip active" data-platform="">All</button>
+      <button type="button" class="chip" data-platform="twitch">Twitch</button>
+      <button type="button" class="chip" data-platform="kick">Kick</button>
+    </div>
     <input type="text" id="search" placeholder="Search channels…"
            autocomplete="off" spellcheck="false" aria-label="Search channels">
+    <p class="search-note hidden" id="kick-note">Kick doesn't offer channel search — type the
+    <strong>exact</strong> username (the one in the kick.com/… URL).</p>
     <ul class="rows" id="results" aria-live="polite"></ul>
     <p class="search-note hidden" id="directory-note">This server only sends notifications for the
     channels listed below.</p>

@@ -5,7 +5,7 @@ import { config, allowlistHas } from './config.js';
 import * as db from './db.js';
 import { getUsers, searchChannels } from './twitch.js';
 import * as kick from './kick.js';
-import { PLATFORMS, normalizePlatform, fetchLiveStream, liveNotificationPayload } from './platforms.js';
+import { PLATFORMS, platformEnabled, normalizePlatform, fetchLiveStream, liveNotificationPayload } from './platforms.js';
 import { vapidPublicKey, sendToSubscription } from './push.js';
 import { handleLiveStream } from './poller.js';
 import { callbackHandler, ensureChannelSubscription, eventsubStatus } from './eventsub.js';
@@ -247,7 +247,10 @@ router.get('/api/search', rateLimiter(20), async (req, res) => {
     const slug = q.toLowerCase();
     if (PLATFORMS.kick.loginRe.test(slug)
       && (!config.channelAllowlist.size || allowlistHas('kick', slug))) {
-      const { row } = await resolveChannel(slug, 'kick').catch(() => ({}));
+      const { row } = await resolveChannel(slug, 'kick').catch((err) => {
+        console.warn('[search] kick lookup failed:', err.message ?? err);
+        return {};
+      });
       if (row) channels.push(channelJson(row));
     }
   }
@@ -276,7 +279,8 @@ router.get('/api/search', rateLimiter(20), async (req, res) => {
 // Viewer-facing: on allowlisted instances, the watchable channels as a
 // browsable list (search alone would mostly return channels we'd refuse).
 router.get('/api/directory', rateLimiter(30), async (req, res) => {
-  if (!config.channelAllowlist.size) return res.json({ restricted: false, channels: [] });
+  const platforms = Object.keys(PLATFORMS).filter(platformEnabled);
+  if (!config.channelAllowlist.size) return res.json({ restricted: false, channels: [], platforms });
   const entries = [...config.channelAllowlist].slice(0, 50)
     .map((entry) => {
       const [platform, login] = entry.split(':');
@@ -303,6 +307,7 @@ router.get('/api/directory', rateLimiter(30), async (req, res) => {
 
   res.json({
     restricted: true,
+    platforms,
     channels: entries
       .map(({ platform, login }) => db.getChannel(platform, login))
       .filter(Boolean)

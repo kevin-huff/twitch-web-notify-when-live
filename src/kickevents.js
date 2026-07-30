@@ -102,7 +102,10 @@ export async function ensureChannelSubscription(login) {
 }
 
 export async function reconcile() {
-  if (!config.kickEnabled) return;
+  if (!config.kickEnabled) {
+    console.log('[kick] disabled — set KICK_CLIENT_ID and KICK_CLIENT_SECRET to enable Kick channels');
+    return;
+  }
   if (!kickEventsEnabled) {
     console.log('[kick-events] disabled (PUBLIC_BASE_URL is not HTTPS) — using poller only');
     return;

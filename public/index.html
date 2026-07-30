@@ -35,6 +35,7 @@
   }
   .wordmark { font: 600 14px/1 var(--mono); color: var(--text); text-decoration: none; letter-spacing: -0.02em; }
   .wordmark span { color: var(--accent-hover); }
+  .pills { display: flex; gap: 8px; }
   .pill {
     font: 500 12px/1 var(--mono);
     color: var(--accent-hover);
@@ -42,6 +43,8 @@
     border-radius: 999px;
     padding: 7px 12px;
   }
+  a.pill { text-decoration: none; }
+  a.pill:hover { border-color: var(--accent-hover); }
 
   .hero { padding: 40px 0 34px; max-width: 720px; }
   h1 {
@@ -219,6 +222,29 @@
   .step p { margin: 0; color: var(--muted); font-size: 13.5px; }
   .step code { font: 12px var(--mono); color: #cfc4e6; background: var(--surface); border: 1px solid var(--border); border-radius: 5px; padding: 1px 5px; }
 
+  .viewer-cta {
+    margin-top: 44px;
+    background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 16%, var(--surface)), var(--surface) 60%);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 30px 28px;
+    display: flex; align-items: center; justify-content: space-between; gap: 22px; flex-wrap: wrap;
+  }
+  .viewer-cta h2 { margin: 0 0 6px; font-size: 21px; letter-spacing: -0.02em; }
+  .viewer-cta p { margin: 0; color: var(--muted); font-size: 14px; max-width: 62ch; }
+  .viewer-cta strong { color: var(--text); }
+  .viewer-cta .cta {
+    display: inline-block;
+    background: var(--accent);
+    color: #fff;
+    text-decoration: none;
+    font: 600 15px/1 system-ui, sans-serif;
+    padding: 14px 22px;
+    border-radius: 10px;
+    white-space: nowrap;
+  }
+  .viewer-cta .cta:hover { background: var(--accent-hover); }
+
   footer {
     margin-top: 46px;
     border-top: 1px solid var(--border);
@@ -242,7 +268,10 @@
 <div class="wrap">
   <header>
     <a class="wordmark" href="/">notify-when-<span>live</span></a>
-    <span class="pill">free forever 💜</span>
+    <div class="pills">
+      <a class="pill" href="/my">for viewers 🔔</a>
+      <span class="pill">free forever 💜</span>
+    </div>
   </header>
 
   <section class="hero">
@@ -250,7 +279,8 @@
     <p>Build your button below, paste one line into your website, and fans get a browser
     notification the moment you start streaming — even with your site closed. No accounts,
     nothing to install.</p>
-    <p class="viewer-link">Not a streamer? <a href="/my">Pick your favorite channels and get notified yourself →</a></p>
+    <p class="viewer-link">Not a streamer? <a href="/my">Pick your favorite Twitch and Kick channels
+    and get notified yourself →</a></p>
   </section>
 
   <section class="builder" aria-label="Button builder">
@@ -349,6 +379,16 @@
       <p>Download <a href="/sw.js" download="sw.js"><code>sw.js</code></a> and put it at your site's
       root. Notifications will then come from your domain instead of this one.</p>
     </div>
+  </section>
+
+  <section class="viewer-cta" aria-label="For viewers">
+    <div>
+      <h2>Just here to watch? Get notified anyway. 🔔</h2>
+      <p>The <strong>viewer page</strong> lets you pick any <strong>Twitch</strong> or
+      <strong>Kick</strong> channels you care about and get a browser notification the second
+      they go live — even with the tab closed. No account, no app, nothing to install.</p>
+    </div>
+    <a class="cta" href="/my">Pick your channels →</a>
   </section>
 
   <footer>
